@@ -1,5 +1,7 @@
 import os
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+import secrets
+import hashlib
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header
 from pydantic import BaseModel
 from supabase import create_client, Client
 from typing import List
@@ -102,4 +104,45 @@ async def invite_user(request: InviteRequest):
         
         return {"status": "success", "message": f"User {request.email} invited successfully."}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class KeyRegenerateRequest(BaseModel):
+    tenant_id: str
+
+@app.post("/api/v1/keys/regenerate")
+async def regenerate_api_key(request: KeyRegenerateRequest, authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        user_id = res.user.id
+        
+        profile_res = supabase.table("user_profiles").select("role").eq("user_id", user_id).eq("tenant_id", request.tenant_id).execute()
+        
+        if not profile_res.data or profile_res.data[0].get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can regenerate API keys")
+        
+        raw_key = secrets.token_urlsafe(32)
+        hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
+        
+        upsert_data = {
+            "tenant_id": request.tenant_id,
+            "hashed_key": hashed_key
+        }
+        supabase.table("api_keys").upsert(upsert_data).execute()
+        
+        return {
+            "status": "success",
+            "message": "API Key regenerated successfully",
+            "api_key": raw_key
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))

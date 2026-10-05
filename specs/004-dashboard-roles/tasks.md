@@ -13,7 +13,7 @@
   - Crear endpoint de invitación de usuario (`POST /api/users/invite`) usando Supabase Auth (Magic Links).
   - Sincronizar inserción en `user_profiles` al aceptar invitación/crear el usuario.
 
-- [ ] **T4: Backend - API Key Management**
+- [x] **T4: Backend - API Key Management**
   - Crear endpoint (`POST /api/v1/keys/regenerate`) para revocar y crear un nuevo hash API Key mediante UPSERT.
 
 - [ ] **T5: Backend - API de Exportación (`GET /api/v1/export`)**
