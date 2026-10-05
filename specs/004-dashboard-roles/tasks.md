@@ -4,7 +4,7 @@
   - Crear tabla `user_profiles` (`user_id`, `tenant_id`, `role` [enum: admin, archivist, digitizer]).
   - Crear o actualizar políticas de Seguridad a Nivel de Fila (RLS) en `folios` y `batches` usando el rol del usuario.
 
-- [ ] **T2: Migración de BD - Exportación y Cuotas**
+- [x] **T2: Migración de BD - Exportación y Cuotas**
   - Crear tabla `api_keys` (`tenant_id` UNIQUE, `hashed_key`).
   - Crear tabla o columnas para `tenant_quotas` (estado de suscripción/cuota).
   - Añadir índices de rendimiento en `folios(tenant_id, verified_at)` y `folios(batch_id)`.
