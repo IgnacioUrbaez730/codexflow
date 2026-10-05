@@ -112,6 +112,22 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
     }
   };
 
+  const handleFocus = (fieldName: string) => {
+    if (!viewer) return;
+    const prediction = mockData.ai_predictions?.find(p => p.field_name === fieldName);
+    if (prediction) {
+      const rect = viewer.viewport.imageToViewportRectangle(
+        new OpenSeadragon.Rect(
+          prediction.xmin,
+          prediction.ymin,
+          prediction.xmax - prediction.xmin,
+          prediction.ymax - prediction.ymin
+        )
+      );
+      viewer.viewport.fitBounds(rect);
+    }
+  };
+
   const onSubmit = (data: FormData) => {
     processNextFolio("completed", data);
   };
@@ -161,6 +177,7 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
               <label className="block text-sm font-medium text-gray-700">Título</label>
               <input
                 {...methods.register("title")}
+                onFocus={() => handleFocus("title")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
                 placeholder="Ingrese título"
               />
@@ -174,6 +191,7 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
               <input
                 type="date"
                 {...methods.register("date")}
+                onFocus={() => handleFocus("date")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
               />
               {methods.formState.errors.date && (
@@ -186,6 +204,7 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
               <input
                 type="number"
                 {...methods.register("amount", { valueAsNumber: true })}
+                onFocus={() => handleFocus("amount")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
               />
               {methods.formState.errors.amount && (
