@@ -36,7 +36,7 @@
   - Implementar `Ctrl + Espacio` para dudar: Descontar cuota, cambiar estado a `revision` y cargar el siguiente.
   - Manejar el caso de llegar al último folio (redirección a panel final).
 
-- [ ] **T8: Frontend - Bandeja de Dudosos**
+- [x] **T8: Frontend - Bandeja de Dudosos**
   - Crear la vista de la bandeja de dudosos.
   - Consumir el listado de folios en `revision` (Supabase RLS filtra los del Archivista o todos para Admin).
   - Permitir cargar el Visor Dual desde la bandeja y guardar (`Ctrl + Enter`) sin consumir crédito adicional.
