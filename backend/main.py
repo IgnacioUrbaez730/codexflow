@@ -16,6 +16,13 @@ class IngestRequest(BaseModel):
     batch_id: str
     files: List[str] # List of file paths/keys uploaded to R2
 
+class FeedbackRequest(BaseModel):
+    tenant_id: str
+    folio_id: str
+    field_name: str
+    predicted_value: str
+    actual_value: str
+
 def process_batch_task(batch_id: str, files: List[str]):
     try:
         # Update batch status to processing
@@ -57,3 +64,18 @@ async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
+@app.post("/active-learning/feedback")
+async def register_feedback(request: FeedbackRequest):
+    try:
+        data = {
+            "tenant_id": request.tenant_id,
+            "folio_id": request.folio_id,
+            "field_name": request.field_name,
+            "predicted_value": request.predicted_value,
+            "actual_value": request.actual_value,
+        }
+        supabase.table("training_data").insert(data).execute()
+        return {"status": "success", "message": "Feedback registered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
