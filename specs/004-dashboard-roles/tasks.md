@@ -16,7 +16,7 @@
 - [x] **T4: Backend - API Key Management**
   - Crear endpoint (`POST /api/v1/keys/regenerate`) para revocar y crear un nuevo hash API Key mediante UPSERT.
 
-- [ ] **T5: Backend - API de Exportación (`GET /api/v1/export`)**
+- [x] **T5: Backend - API de Exportación (`GET /api/v1/export`)**
   - Implementar middleware de autenticación de la API Key.
   - Implementar validación financiera (Si Freemium está agotado, devolver HTTP 402).
   - Implementar consulta de folios limitando el retorno por defecto a los últimos 30 días (`verified_at`).

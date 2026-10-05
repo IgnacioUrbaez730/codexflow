@@ -1,10 +1,11 @@
 import os
 import secrets
 import hashlib
+from datetime import datetime, timedelta
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header
 from pydantic import BaseModel
 from supabase import create_client, Client
-from typing import List
+from typing import List, Optional
 from worker import process_file
 
 # Setup Supabase client
@@ -146,3 +147,55 @@ async def regenerate_api_key(request: KeyRegenerateRequest, authorization: str =
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/export")
+async def export_data(batch_id: Optional[str] = None, x_api_key: str = Header(None)):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing API Key")
+    
+    hashed_key = hashlib.sha256(x_api_key.encode()).hexdigest()
+    
+    # Verify API key
+    key_res = supabase.table("api_keys").select("tenant_id").eq("hashed_key", hashed_key).execute()
+    if not key_res.data:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    
+    tenant_id = key_res.data[0]["tenant_id"]
+    
+    # Check Soft Paywall
+    quota_res = supabase.table("tenant_quotas").select("*").eq("tenant_id", tenant_id).execute()
+    if quota_res.data:
+        quota = quota_res.data[0]
+        used = quota.get("used_this_week", 0)
+        limit = quota.get("weekly_limit", float('inf'))
+        if used >= limit:
+            raise HTTPException(status_code=402, detail="Payment Required: Weekly limit reached")
+            
+    # Query folios
+    query = supabase.table("folios").select("id, status, created_at, verified_at, ai_predictions, metadata, batch_id").eq("tenant_id", tenant_id).eq("status", "completed")
+    
+    if batch_id:
+        query = query.eq("batch_id", batch_id)
+    else:
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+        query = query.gte("created_at", thirty_days_ago)
+        
+    try:
+        folios_res = query.execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    results = []
+    if folios_res.data:
+        for f in folios_res.data:
+            results.append({
+                "id": f.get("id"),
+                "batch_id": f.get("batch_id"),
+                "status": f.get("status"),
+                "created_at": f.get("created_at"),
+                "verified_at": f.get("verified_at"),
+                "metadata": f.get("metadata", {}),
+                "ai_predictions": f.get("ai_predictions", {})
+            })
+            
+    return results
