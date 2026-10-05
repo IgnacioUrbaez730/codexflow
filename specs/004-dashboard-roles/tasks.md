@@ -32,7 +32,7 @@
   - Pantalla para listar los miembros del tenant.
   - Botón de invitar nuevo empleado con modal para ingresar email y seleccionar su rol.
 
-- [ ] **T9: Frontend - Configuración de Exportación (API y CSV)**
+- [x] **T9: Frontend - Configuración de Exportación (API y CSV)**
   - Pantalla para que el Admin obtenga y regenere su API Key.
   - Botón para disparar la descarga estática CSV de los últimos datos.
 
