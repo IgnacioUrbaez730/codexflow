@@ -3,6 +3,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from supabase import create_client, Client
 from typing import List
+from worker import process_file
 
 # Setup Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://localhost:8000")
@@ -27,13 +28,15 @@ def process_batch_task(batch_id: str, files: List[str]):
                 "status": "pending",
                 "r2_url": file,
             }
-            supabase.table("folios").insert(folio_data).execute()
+            res = supabase.table("folios").insert(folio_data).execute()
             
-        # TODO: Implement Poppler/Vips processing (Task T5)
-        # - Download original file from R2
-        # - Use poppler to extract pages from PDF if applicable
-        # - Use vips to generate DZI pyramid for each page/image
-        # - Upload generated DZI to R2 and update folio r2_url and status
+            # Run processing worker
+            if res.data:
+                folio_id = res.data[0]["id"]
+                try:
+                    process_file(folio_id, file)
+                except Exception as file_e:
+                    print(f"Error processing file {file} for folio {folio_id}: {file_e}")
         
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")

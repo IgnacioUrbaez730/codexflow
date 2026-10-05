@@ -2,3 +2,8 @@ fastapi
 uvicorn
 supabase
 pydantic
+pdf2image
+pyvips
+boto3
+pytest
+moto
