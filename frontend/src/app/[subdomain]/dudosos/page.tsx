@@ -9,6 +9,7 @@ export default function DudososPage({ params }: { params: { subdomain: string } 
   const [folios, setFolios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<string>("admin");
   const router = useRouter();
 
   useEffect(() => {
@@ -19,9 +20,20 @@ export default function DudososPage({ params }: { params: { subdomain: string } 
         const tenant_id = "org-1"; // Idealmente se obtiene del subdomain o de la sesión
         const token = "mock-token";
         
-        const data = await getDudosos(tenant_id, token);
-        // En caso de que no haya datos, asegurar que sea un array vacío
-        setFolios(data || []);
+        const currentRole = localStorage.getItem("mock_role") || "admin";
+        setRole(currentRole);
+
+        const currentUserId = localStorage.getItem("mock_user_id") || "user-1"; // En caso real, se extrae del auth
+        
+        let data = await getDudosos(tenant_id, token);
+        data = data || [];
+
+        // Filtrado por rol
+        if (currentRole === "archivist") {
+          data = data.filter((folio: any) => folio.batches?.uploaded_by === currentUserId);
+        }
+
+        setFolios(data);
       } catch (err: any) {
         setError(err.message || "Error al cargar los folios dudosos");
       } finally {
@@ -56,7 +68,12 @@ export default function DudososPage({ params }: { params: { subdomain: string } 
               <div>
                 <h3 className="font-semibold text-lg">Folio: {folio.id}</h3>
                 <p className="text-sm text-gray-500">Lote: {folio.batch_id}</p>
-                <p className="text-xs text-gray-400">
+                {role === "admin" && (
+                  <p className="text-sm font-medium text-blue-600 mt-1">
+                    Archivista Responsable: {folio.batches?.uploaded_by || "Desconocido"}
+                  </p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
                   Creado: {new Date(folio.created_at).toLocaleString()}
                 </p>
               </div>

@@ -24,7 +24,7 @@
 - [x] **T6: Backend/Frontend - Exportación CSV Dinámica**
   - Desarrollar la lógica de exportación que construya las columnas dinámicamente según la plantilla del tenant al día actual.
 
-- [ ] **T7: Frontend - Gestión de Accesos UI**
+- [x] **T7: Frontend - Gestión de Accesos UI**
   - Implementar layout protegido con redirecciones por Rol (ej. los Digitadores solo van al Visor Dual).
   - Actualizar UI de Bandeja de Dudosos: el Archivista solo hace fetch de sus lotes; la vista de Admin incluye la columna "Archivista Responsable".
 
