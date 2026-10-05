@@ -10,4 +10,4 @@
 - [x] **T8: Frontend - Integración de Predicciones:** Modificar las consultas y estado global (Zustand/Redux) para disponer de `ai_predictions` al inicializar un folio.
 - [x] **T9: Frontend - OpenSeadragon Overlays:** Programar un componente/lógica que dibuje recuadros visuales en OpenSeadragon basados en las coordenadas (`xmin, ymin, xmax, ymax`).
 - [x] **T10: Frontend - Ergonomía Visual por Foco:** Enlazar el evento `onFocus` de los inputs del formulario para que el visor OpenSeadragon haga zoom/paneo a la coordenada vinculada al campo activo.
-- [ ] **T11: Frontend - Feedback (Active Learning):** Al accionar la tecla de guardado rápido (`Ctrl+Enter`), verificar si el valor confirmado difiere de la predicción y enviar la discrepancia al endpoint de Active Learning.
+- [x] **T11: Frontend - Feedback (Active Learning):** Al accionar la tecla de guardado rápido (`Ctrl+Enter`), verificar si el valor confirmado difiere de la predicción y enviar la discrepancia al endpoint de Active Learning.

@@ -16,9 +16,9 @@ const mockData = {
     amount: "z.number()",
   },
   ai_predictions: [
-    { field_name: "title", xmin: 500, ymin: 500, xmax: 800, ymax: 600 },
-    { field_name: "date", xmin: 1000, ymin: 500, xmax: 1200, ymax: 600 },
-    { field_name: "amount", xmin: 500, ymin: 700, xmax: 700, ymax: 800 },
+    { field_name: "title", xmin: 500, ymin: 500, xmax: 800, ymax: 600, predicted_value: "Mock Title" },
+    { field_name: "date", xmin: 1000, ymin: 500, xmax: 1200, ymax: 600, predicted_value: "2024-01-01" },
+    { field_name: "amount", xmin: 500, ymin: 700, xmax: 700, ymax: 800, predicted_value: 100 },
   ]
 };
 
@@ -128,7 +128,31 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
     }
   };
 
-  const onSubmit = (data: FormData) => {
+  const onSubmit = async (data: FormData) => {
+    // T11: Compare final values with ai_predictions
+    if (mockData.ai_predictions) {
+      for (const pred of mockData.ai_predictions) {
+        const actual_value = (data as any)[pred.field_name];
+        if (actual_value !== undefined && actual_value !== pred.predicted_value) {
+          try {
+            await fetch("/active-learning/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenant_id: params.subdomain,
+                folio_id: "mock_folio_id",
+                field_name: pred.field_name,
+                predicted_value: pred.predicted_value,
+                actual_value: actual_value
+              })
+            });
+            console.log(`Mock: Feedback enviado para ${pred.field_name}`);
+          } catch (e) {
+            console.error("Error sending feedback", e);
+          }
+        }
+      }
+    }
     processNextFolio("completed", data);
   };
 
