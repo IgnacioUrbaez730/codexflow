@@ -2,10 +2,10 @@ import os
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Header
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
 from pydantic import BaseModel
-from supabase import create_client, Client
-from typing import List, Optional
+from supabase import create_client, Client, ClientOptions
+from typing import List, Optional, Dict, Any
 from worker import process_file
 
 # Setup Supabase client
@@ -20,21 +20,47 @@ class IngestRequest(BaseModel):
     files: List[str] # List of file paths/keys uploaded to R2
 
 class FeedbackRequest(BaseModel):
-    tenant_id: str
     folio_id: str
     field_name: str
     predicted_value: str
     actual_value: str
+
+async def get_auth_context(authorization: str = Header(...)) -> Dict[str, Any]:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        user_id = res.user.id
+        profile_res = supabase.table("user_profiles").select("tenant_id").eq("user_id", user_id).execute()
+        if not profile_res.data:
+            raise HTTPException(status_code=403, detail="User profile not found")
+            
+        tenant_id = profile_res.data[0]["tenant_id"]
+        
+        # Create user-scoped client
+        options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
+        user_client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
+        
+        return {"tenant_id": tenant_id, "user_client": user_client}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=401, detail=f"Authentication failed")
 
 class InviteRequest(BaseModel):
     email: str
     role: str
     tenant_id: str
 
-def process_batch_task(batch_id: str, files: List[str]):
+def process_batch_task(batch_id: str, files: List[str], user_client: Client):
     try:
         # Update batch status to processing
-        supabase.table("batches").update({"status": "processing"}).eq("id", batch_id).execute()
+        user_client.table("batches").update({"status": "processing"}).eq("id", batch_id).execute()
         
         # Create folios for each file with status pending
         for file in files:
@@ -43,7 +69,7 @@ def process_batch_task(batch_id: str, files: List[str]):
                 "status": "pending",
                 "r2_url": file,
             }
-            res = supabase.table("folios").insert(folio_data).execute()
+            res = user_client.table("folios").insert(folio_data).execute()
             
             # Run processing worker
             if res.data:
@@ -52,18 +78,18 @@ def process_batch_task(batch_id: str, files: List[str]):
                     process_file(folio_id, file)
                 except Exception as file_e:
                     print(f"Error processing file {file} for folio {folio_id}: {file_e}")
-                    supabase.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
-                    supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+                    user_client.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
+                    user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
         
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")
-        supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+        user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
 @app.post("/ingest")
-async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks):
+async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         # Confirm upload and dispatch the background task
-        background_tasks.add_task(process_batch_task, request.batch_id, request.files)
+        background_tasks.add_task(process_batch_task, request.batch_id, request.files, auth["user_client"])
         
         return {"status": "success", "message": f"Batch {request.batch_id} ingestion task dispatched."}
     except Exception as e:
@@ -74,16 +100,17 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/active-learning/feedback")
-async def register_feedback(request: FeedbackRequest):
+async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         data = {
-            "tenant_id": request.tenant_id,
+            "tenant_id": auth["tenant_id"],
             "folio_id": request.folio_id,
             "field_name": request.field_name,
             "predicted_value": request.predicted_value,
             "actual_value": request.actual_value,
         }
-        supabase.table("training_data").insert(data).execute()
+        user_client = auth["user_client"]
+        user_client.table("training_data").insert(data).execute()
         return {"status": "success", "message": "Feedback registered successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
