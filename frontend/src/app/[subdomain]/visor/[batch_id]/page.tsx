@@ -15,6 +15,11 @@ const mockData = {
     date: "z.string()",
     amount: "z.number()",
   },
+  ai_predictions: [
+    { field_name: "title", xmin: 500, ymin: 500, xmax: 800, ymax: 600 },
+    { field_name: "date", xmin: 1000, ymin: 500, xmax: 1200, ymax: 600 },
+    { field_name: "amount", xmin: 500, ymin: 700, xmax: 700, ymax: 800 },
+  ]
 };
 
 // Dynamic schema generation based on mock
@@ -53,6 +58,35 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
         visibilityRatio: 1,
         zoomPerScroll: 2,
       });
+
+      newViewer.addHandler("open", () => {
+        if (mockData.ai_predictions && mockData.ai_predictions.length > 0) {
+          mockData.ai_predictions.forEach((pred, index) => {
+            const elt = document.createElement("div");
+            elt.id = `overlay-${index}`;
+            elt.style.border = "2px solid rgba(0, 122, 255, 0.6)";
+            elt.style.backgroundColor = "rgba(0, 122, 255, 0.2)";
+            elt.style.pointerEvents = "none"; // allow clicking through if necessary
+            elt.title = pred.field_name;
+
+            // Assuming coordinates are in image pixels
+            const rect = newViewer.viewport.imageToViewportRectangle(
+              new OpenSeadragon.Rect(
+                pred.xmin,
+                pred.ymin,
+                pred.xmax - pred.xmin,
+                pred.ymax - pred.ymin
+              )
+            );
+
+            newViewer.addOverlay({
+              element: elt,
+              location: rect,
+            });
+          });
+        }
+      });
+
       setViewer(newViewer);
     }
 
