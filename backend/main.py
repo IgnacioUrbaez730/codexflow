@@ -37,9 +37,12 @@ def process_batch_task(batch_id: str, files: List[str]):
                     process_file(folio_id, file)
                 except Exception as file_e:
                     print(f"Error processing file {file} for folio {folio_id}: {file_e}")
+                    supabase.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
+                    supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
         
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")
+        supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
 @app.post("/ingest")
 async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks):
