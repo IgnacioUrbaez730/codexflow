@@ -28,7 +28,7 @@
   - Implementar layout protegido con redirecciones por Rol (ej. los Digitadores solo van al Visor Dual).
   - Actualizar UI de Bandeja de Dudosos: el Archivista solo hace fetch de sus lotes; la vista de Admin incluye la columna "Archivista Responsable".
 
-- [ ] **T8: Frontend - Panel de Usuarios e Invitación**
+- [x] **T8: Frontend - Panel de Usuarios e Invitación**
   - Pantalla para listar los miembros del tenant.
   - Botón de invitar nuevo empleado con modal para ingresar email y seleccionar su rol.
 
