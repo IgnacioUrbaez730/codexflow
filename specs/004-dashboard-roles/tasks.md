@@ -9,7 +9,7 @@
   - Crear tabla o columnas para `tenant_quotas` (estado de suscripción/cuota).
   - Añadir índices de rendimiento en `folios(tenant_id, verified_at)` y `folios(batch_id)`.
 
-- [ ] **T3: Backend - API de Gestión de Usuarios y Roles**
+- [x] **T3: Backend - API de Gestión de Usuarios y Roles**
   - Crear endpoint de invitación de usuario (`POST /api/users/invite`) usando Supabase Auth (Magic Links).
   - Sincronizar inserción en `user_profiles` al aceptar invitación/crear el usuario.
 

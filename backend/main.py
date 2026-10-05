@@ -23,6 +23,11 @@ class FeedbackRequest(BaseModel):
     predicted_value: str
     actual_value: str
 
+class InviteRequest(BaseModel):
+    email: str
+    role: str
+    tenant_id: str
+
 def process_batch_task(batch_id: str, files: List[str]):
     try:
         # Update batch status to processing
@@ -77,5 +82,24 @@ async def register_feedback(request: FeedbackRequest):
         }
         supabase.table("training_data").insert(data).execute()
         return {"status": "success", "message": "Feedback registered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/invite")
+async def invite_user(request: InviteRequest):
+    if request.role not in ["admin", "archivist", "digitizer"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    try:
+        res = supabase.auth.admin.invite_user_by_email(request.email)
+        user_id = res.user.id
+        
+        profile_data = {
+            "user_id": user_id,
+            "tenant_id": request.tenant_id,
+            "role": request.role
+        }
+        supabase.table("user_profiles").upsert(profile_data).execute()
+        
+        return {"status": "success", "message": f"User {request.email} invited successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
