@@ -57,29 +57,45 @@ class InviteRequest(BaseModel):
     role: str
     tenant_id: str
 
-def process_batch_task(batch_id: str, files: List[str], user_client: Client):
+import asyncio
+
+MAX_CONCURRENT_FILES = 2
+process_semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+
+async def async_process_file(folio_id: str, file_key: str, user_client: Client, batch_id: str):
+    async with process_semaphore:
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, process_file, folio_id, file_key)
+        except Exception as file_e:
+            print(f"Error processing file {file_key} for folio {folio_id}: {file_e}")
+            user_client.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
+            user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+
+async def process_batch_task(batch_id: str, files: List[str], user_client: Client, tenant_id: str):
     try:
         # Update batch status to processing
         user_client.table("batches").update({"status": "processing"}).eq("id", batch_id).execute()
         
+        tasks = []
         # Create folios for each file with status pending
         for file in files:
             folio_data = {
                 "batch_id": batch_id,
+                "tenant_id": tenant_id,
                 "status": "pending",
                 "r2_url": file,
             }
             res = user_client.table("folios").insert(folio_data).execute()
             
-            # Run processing worker
+            # Prepare processing task
             if res.data:
                 folio_id = res.data[0]["id"]
-                try:
-                    process_file(folio_id, file)
-                except Exception as file_e:
-                    print(f"Error processing file {file} for folio {folio_id}: {file_e}")
-                    user_client.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
-                    user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+                tasks.append(async_process_file(folio_id, file, user_client, batch_id))
+                
+        # Wait for all files in this batch to finish processing
+        if tasks:
+            await asyncio.gather(*tasks)
         
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")
@@ -89,7 +105,7 @@ def process_batch_task(batch_id: str, files: List[str], user_client: Client):
 async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         # Confirm upload and dispatch the background task
-        background_tasks.add_task(process_batch_task, request.batch_id, request.files, auth["user_client"])
+        background_tasks.add_task(process_batch_task, request.batch_id, request.files, auth["user_client"], auth["tenant_id"])
         
         return {"status": "success", "message": f"Batch {request.batch_id} ingestion task dispatched."}
     except Exception as e:
@@ -227,7 +243,7 @@ async def export_data(batch_id: Optional[str] = None, x_api_key: str = Header(No
             
     return results
 
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 import csv
 import io
 
@@ -282,26 +298,37 @@ async def export_data_csv(batch_id: Optional[str] = None, x_api_key: str = Heade
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
         
-    output = io.StringIO()
     base_columns = ["id", "batch_id", "status", "created_at", "verified_at"]
     all_columns = base_columns + template_fields
     
-    writer = csv.DictWriter(output, fieldnames=all_columns)
-    writer.writeheader()
-    
-    if folios_res.data:
-        for f in folios_res.data:
-            row = {
-                "id": f.get("id", ""),
-                "batch_id": f.get("batch_id", ""),
-                "status": f.get("status", ""),
-                "created_at": f.get("created_at", ""),
-                "verified_at": f.get("verified_at", "")
-            }
-            predictions = f.get("ai_predictions") or {}
-            for field in template_fields:
-                row[field] = predictions.get(field, "")
-            writer.writerow(row)
-            
-    return Response(content=output.getvalue(), media_type="text/csv")
+    def iter_csv():
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=all_columns)
+        writer.writeheader()
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+        
+        if folios_res.data:
+            for f in folios_res.data:
+                row = {
+                    "id": f.get("id", ""),
+                    "batch_id": f.get("batch_id", ""),
+                    "status": f.get("status", ""),
+                    "created_at": f.get("created_at", ""),
+                    "verified_at": f.get("verified_at", "")
+                }
+                predictions = f.get("ai_predictions") or {}
+                for field in template_fields:
+                    row[field] = predictions.get(field, "")
+                writer.writerow(row)
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+                
+    return StreamingResponse(
+        iter_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=export.csv"}
+    )
 
