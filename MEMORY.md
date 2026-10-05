@@ -3,14 +3,21 @@
 Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo ~50 líneas. Resume el estado y decisiones clave.
 
 ## Estado actual
-- **Fase:** Implementación (Paso 6) de la Spec 002.
-- **Spec 001 (Core Multi-Tenant):** Completada, QA Aprobado. Plataforma base funcional.
+- **Fase:** Implementación de la Spec 002 (Módulo 2).
+- **Progreso:** Tareas T1 a T6 completadas con éxito.
+  - T1: RLS y Base de Datos creados.
+  - T2: Gestión de Plantillas creada.
+  - T3: URLs Firmadas y Subida a Cloudflare R2 completada.
+  - T4: FastAPI Backend estructurado.
+  - T5: Worker de procesamiento (Poppler/Vips) programado.
+  - T6: Visor Dual (OpenSeadragon) creado en Frontend.
 
 ## Decisiones Técnicas (y por qué)
 - **Metodología:** SDD gestionado por Antigravity (El Coordinador).
 - **Stack Aprobado:** Next.js (Front) + FastAPI Python (Back) + Supabase (BD, Auth) + Cloudflare R2 (Storage).
-- **Almacenamiento de Imágenes:** Cloudflare R2 por su Egress gratuito. Seguridad vía Signed URLs desde FastAPI.
+- **Infraestructura:** Vercel (Front) y Render (Back) conectados vía GitHub. Despliegues automatizados por el agente.
+- **Seguridad:** Variables de entorno sensibles (`.env.local`) removidas del control de versiones tras bloqueo preventivo de GitHub.
 
 ## Próximos pasos (Pendientes)
-1. Ejecutar Tareas (T1 a T8) del Módulo 2 mediante el Implementador.
-2. Configurar infraestructura (Render, Vercel, Cloudflare R2).
+- **MÓDULO 2 COMPLETADO.**
+- A la espera de instrucciones para iniciar la especificación del Módulo 3 (Fase de IA / Modelo Predictivo).
