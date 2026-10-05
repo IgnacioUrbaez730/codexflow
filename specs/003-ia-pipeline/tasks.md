@@ -1,7 +1,7 @@
 # Tareas de Implementación - Pipeline de IA (Spec 003)
 
 - [x] **T1: Base de Datos - Migración de tabla `folios`:** Crear una migración en Supabase SQL para añadir la columna `ai_predictions` de tipo JSONB a la tabla `folios`.
-- [ ] **T2: Base de Datos - Nueva tabla `training_data`:** Crear la tabla `training_data` (`id`, `tenant_id`, `folio_id`, `field_name`, `predicted_value`, `actual_value`) e implementar las políticas RLS estrictas.
+- [x] **T2: Base de Datos - Nueva tabla `training_data`:** Crear la tabla `training_data` (`id`, `tenant_id`, `folio_id`, `field_name`, `predicted_value`, `actual_value`) e implementar las políticas RLS estrictas.
 - [ ] **T3: Backend - Configuración de Docker:** Implementar el `Dockerfile` para el empaquetado del backend, asegurando la instalación de la dependencia de sistema `tesseract-ocr`.
 - [ ] **T4: Backend - Motor de OCR:** Añadir `pytesseract` al proyecto e integrarlo para procesar imágenes locales extrayendo texto, bounding boxes y confianza.
 - [ ] **T5: Backend - Extracción por Regex:** Desarrollar la lógica de mapeo en la Background Task para cruzar resultados del OCR con la configuración Regex de la plantilla del folio.
