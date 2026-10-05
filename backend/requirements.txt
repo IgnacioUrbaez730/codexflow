@@ -7,3 +7,5 @@ pyvips
 boto3
 pytest
 moto
+pytesseract
+Pillow
