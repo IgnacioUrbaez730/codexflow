@@ -44,6 +44,7 @@ def process_file(folio_id: str, file_key: str):
             pages_to_process.append(local_path)
             
         dzi_base_url = ""
+        all_ocr_data = []
             
         for i, page_path in enumerate(pages_to_process):
             dzi_name = f"{folio_id}_{i}"
@@ -65,7 +66,28 @@ def process_file(folio_id: str, file_key: str):
             if i == 0:
                 dzi_base_url = f"dzi/{dzi_name}.dzi"
                 
+            # Extraer texto y bounding boxes con Tesseract
+            from backend.ai_engine import extract_text_and_boxes
+            ocr_results = extract_text_and_boxes(page_path)
+            all_ocr_data.extend(ocr_results)
+            
+        # Obtener template_schema para el mapeo
+        template_schema = {}
+        try:
+            folio_res = supabase.table("folios").select("template_id").eq("id", folio_id).execute()
+            if folio_res.data and folio_res.data[0].get("template_id"):
+                template_id = folio_res.data[0]["template_id"]
+                template_res = supabase.table("templates").select("schema").eq("id", template_id).execute()
+                if template_res.data and template_res.data[0].get("schema"):
+                    template_schema = template_res.data[0]["schema"]
+        except Exception as e:
+            print(f"Error fetching template schema: {e}")
+            
+        from backend.ai_engine import map_ocr_to_template
+        ai_predictions = map_ocr_to_template(all_ocr_data, template_schema)
+                
         supabase.table("folios").update({
             "status": "processed",
-            "r2_url": dzi_base_url
+            "r2_url": dzi_base_url,
+            "ai_predictions": ai_predictions
         }).eq("id", folio_id).execute()

@@ -5,7 +5,7 @@
 - [x] **T3: Backend - Configuración de Docker:** Implementar el `Dockerfile` para el empaquetado del backend, asegurando la instalación de la dependencia de sistema `tesseract-ocr`.
 - [x] **T4: Backend - Motor de OCR:** Añadir `pytesseract` al proyecto e integrarlo para procesar imágenes locales extrayendo texto, bounding boxes y confianza.
 - [x] **T5: Backend - Extracción por Regex:** Desarrollar la lógica de mapeo en la Background Task para cruzar resultados del OCR con la configuración Regex de la plantilla del folio.
-- [ ] **T6: Backend - Persistencia de Predicciones:** Actualizar el flujo del Worker para que, tras el procesamiento DZI y OCR, guarde el payload estructurado dentro de `ai_predictions` en base de datos.
+- [x] **T6: Backend - Persistencia de Predicciones:** Actualizar el flujo del Worker para que, tras el procesamiento DZI y OCR, guarde el payload estructurado dentro de `ai_predictions` en base de datos.
 - [ ] **T7: Backend - Endpoint Active Learning:** Crear el endpoint en FastAPI (POST) que permita registrar el feedback del usuario en la tabla `training_data`.
 - [ ] **T8: Frontend - Integración de Predicciones:** Modificar las consultas y estado global (Zustand/Redux) para disponer de `ai_predictions` al inicializar un folio.
 - [ ] **T9: Frontend - OpenSeadragon Overlays:** Programar un componente/lógica que dibuje recuadros visuales en OpenSeadragon basados en las coordenadas (`xmin, ymin, xmax, ymax`).
