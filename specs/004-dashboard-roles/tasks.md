@@ -21,7 +21,7 @@
   - Implementar validación financiera (Si Freemium está agotado, devolver HTTP 402).
   - Implementar consulta de folios limitando el retorno por defecto a los últimos 30 días (`verified_at`).
 
-- [ ] **T6: Backend/Frontend - Exportación CSV Dinámica**
+- [x] **T6: Backend/Frontend - Exportación CSV Dinámica**
   - Desarrollar la lógica de exportación que construya las columnas dinámicamente según la plantilla del tenant al día actual.
 
 - [ ] **T7: Frontend - Gestión de Accesos UI**
