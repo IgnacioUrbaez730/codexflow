@@ -36,7 +36,7 @@
   - Pantalla para que el Admin obtenga y regenere su API Key.
   - Botón para disparar la descarga estática CSV de los últimos datos.
 
-- [ ] **T10: Frontend - Dashboard, Gráficas y Soft Paywall**
+- [x] **T10: Frontend - Dashboard, Gráficas y Soft Paywall**
   - Desarrollar query/fetch optimizado y el componente de la gráfica de línea de tendencia (productividad de folios procesados en el tiempo).
   - Desarrollar métricas de embudo (subidos vs verificados).
   - Implementar banner de "Procesamiento Congelado" si la cuota Freemium expiró, permitiendo que las gráficas históricas se sigan renderizando bajo la alerta.
