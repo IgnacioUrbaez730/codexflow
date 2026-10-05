@@ -17,6 +17,7 @@ export async function getDudosos(tenant_id: string, token: string) {
       metadata, 
       r2_url, 
       created_at,
+      ai_predictions,
       batches (
         uploaded_by
       )
