@@ -55,7 +55,7 @@ def map_ocr_to_template(ocr_data: list, template_schema: dict) -> dict:
     Evalúa expresiones regulares sobre los textos extraídos por OCR.
     Devuelve un diccionario con la coincidencia de mayor confianza para cada campo.
     """
-    results = {}
+    results = []
     for field_name, field_config in template_schema.items():
         pattern = field_config.get("regex_pattern")
         if not pattern:
@@ -80,6 +80,14 @@ def map_ocr_to_template(ocr_data: list, template_schema: dict) -> dict:
                     best_match = box
                     
         if best_match:
-            results[field_name] = best_match
+            results.append({
+                "field_name": field_name,
+                "predicted_value": best_match["text"],
+                "confidence": best_match["conf"],
+                "xmin": best_match["xmin"],
+                "ymin": best_match["ymin"],
+                "xmax": best_match["xmax"],
+                "ymax": best_match["ymax"]
+            })
             
     return results

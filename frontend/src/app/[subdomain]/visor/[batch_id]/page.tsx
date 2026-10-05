@@ -16,9 +16,9 @@ const mockData = {
     amount: "z.number()",
   },
   ai_predictions: [
-    { field_name: "title", xmin: 500, ymin: 500, xmax: 800, ymax: 600, predicted_value: "Mock Title" },
-    { field_name: "date", xmin: 1000, ymin: 500, xmax: 1200, ymax: 600, predicted_value: "2024-01-01" },
-    { field_name: "amount", xmin: 500, ymin: 700, xmax: 700, ymax: 800, predicted_value: 100 },
+    { field_name: "title", xmin: 500, ymin: 500, xmax: 800, ymax: 600, predicted_value: "Mock Title", confidence: 95 },
+    { field_name: "date", xmin: 1000, ymin: 500, xmax: 1200, ymax: 600, predicted_value: "2024-01-01", confidence: 85 },
+    { field_name: "amount", xmin: 500, ymin: 700, xmax: 700, ymax: 800, predicted_value: 100, confidence: 92 },
   ]
 };
 
@@ -39,8 +39,18 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
   const DynamicFormSchema = generateSchema(mockData.templateSchema);
   type FormData = z.infer<typeof DynamicFormSchema>;
 
+  const defaultValues: any = {};
+  if (mockData.ai_predictions) {
+    mockData.ai_predictions.forEach(pred => {
+      if (pred.confidence >= 90) {
+        defaultValues[pred.field_name] = pred.predicted_value;
+      }
+    });
+  }
+
   const methods = useForm<FormData>({
     resolver: zodResolver(DynamicFormSchema),
+    defaultValues
   });
 
   useEffect(() => {
@@ -178,6 +188,22 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [methods]);
 
+  const getSuggestionText = (fieldName: string) => {
+    const pred = mockData.ai_predictions?.find(p => p.field_name === fieldName);
+    if (pred && pred.confidence < 90) {
+      return `Sugerencia IA (${Math.round(pred.confidence)}%): ${pred.predicted_value}`;
+    }
+    return null;
+  };
+
+  const getPlaceholderText = (fieldName: string, defaultText: string) => {
+    const pred = mockData.ai_predictions?.find(p => p.field_name === fieldName);
+    if (pred && pred.confidence < 90) {
+      return String(pred.predicted_value);
+    }
+    return defaultText;
+  };
+
   return (
     <div className="flex h-screen w-full bg-gray-100 overflow-hidden">
       {/* Left: OpenSeadragon Viewer */}
@@ -203,8 +229,11 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
                 {...methods.register("title")}
                 onFocus={() => handleFocus("title")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-                placeholder="Ingrese título"
+                placeholder={getPlaceholderText("title", "Ingrese título")}
               />
+              {getSuggestionText("title") && (
+                <p className="mt-1 text-xs text-blue-600">{getSuggestionText("title")}</p>
+              )}
               {methods.formState.errors.title && (
                 <p className="mt-1 text-sm text-red-600">{methods.formState.errors.title.message}</p>
               )}
@@ -217,7 +246,11 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
                 {...methods.register("date")}
                 onFocus={() => handleFocus("date")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                placeholder={getPlaceholderText("date", "")}
               />
+              {getSuggestionText("date") && (
+                <p className="mt-1 text-xs text-blue-600">{getSuggestionText("date")}</p>
+              )}
               {methods.formState.errors.date && (
                 <p className="mt-1 text-sm text-red-600">{methods.formState.errors.date.message}</p>
               )}
@@ -230,7 +263,11 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
                 {...methods.register("amount", { valueAsNumber: true })}
                 onFocus={() => handleFocus("amount")}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                placeholder={getPlaceholderText("amount", "")}
               />
+              {getSuggestionText("amount") && (
+                <p className="mt-1 text-xs text-blue-600">{getSuggestionText("amount")}</p>
+              )}
               {methods.formState.errors.amount && (
                 <p className="mt-1 text-sm text-red-600">{methods.formState.errors.amount.message}</p>
               )}

@@ -46,11 +46,14 @@ def test_map_ocr_to_template():
     
     result = map_ocr_to_template(ocr_data, template)
     
-    assert 'invoice_number' in result
-    assert result['invoice_number']['conf'] == 95.0
-    assert result['invoice_number']['text'] == 'Invoice: 12345'
+    assert isinstance(result, list)
+    assert len(result) == 2
     
-    assert 'total_amount' in result
-    assert result['total_amount']['text'] == 'Total: $100.00'
+    invoice = next(r for r in result if r['field_name'] == 'invoice_number')
+    assert invoice['confidence'] == 95.0
+    assert invoice['predicted_value'] == 'Invoice: 12345'
     
-    assert 'no_match' not in result
+    total = next(r for r in result if r['field_name'] == 'total_amount')
+    assert total['predicted_value'] == 'Total: $100.00'
+    
+    assert not any(r['field_name'] == 'no_match' for r in result)
