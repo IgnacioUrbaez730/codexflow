@@ -5,6 +5,7 @@ import OpenSeadragon from "openseadragon";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useRouter } from "next/navigation";
 
 // Simulated fetch from DB for the batch, template schema, and current folio
 const mockData = {
@@ -28,6 +29,7 @@ const generateSchema = (schemaDef: any) => {
 export default function VisorDualPage({ params }: { params: { subdomain: string; batch_id: string } }) {
   const osdRef = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<OpenSeadragon.Viewer | null>(null);
+  const router = useRouter();
 
   const DynamicFormSchema = generateSchema(mockData.templateSchema);
   type FormData = z.infer<typeof DynamicFormSchema>;
@@ -61,9 +63,46 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
     };
   }, [viewer]);
 
-  const onSubmit = (data: FormData) => {
-    console.log("Form data:", data);
+  const processNextFolio = async (status: "completed" | "revision", data?: any) => {
+    console.log("Mock: Descontando 1 de la cuota diaria");
+    console.log(`Mock: Actualizando folio a estado ${status}`, data);
+    
+    // Simulate checking for next pending folios
+    const hasMorePending = Math.random() > 0.5; // Mock randomness
+    if (hasMorePending) {
+      console.log("Mock: Cargando folio siguiente...");
+      methods.reset();
+    } else {
+      console.log("Mock: No hay más folios pending, redirigiendo al dashboard...");
+      router.push(`/${params.subdomain}/dashboard`);
+    }
   };
+
+  const onSubmit = (data: FormData) => {
+    processNextFolio("completed", data);
+  };
+
+  const onDoubt = () => {
+    processNextFolio("revision");
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl + Enter to Save
+      if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        methods.handleSubmit(onSubmit)();
+      }
+      // Ctrl + Space to mark as Doubt
+      if (e.ctrlKey && e.code === "Space") {
+        e.preventDefault();
+        onDoubt();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [methods]);
 
   return (
     <div className="flex h-screen w-full bg-gray-100 overflow-hidden">
@@ -78,6 +117,10 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
           Captura de Datos - {params.batch_id}
         </h1>
         
+        <p className="text-sm text-gray-500 mb-6">
+          Atajos: <kbd className="bg-gray-200 px-1 rounded">Ctrl + Enter</kbd> para Guardar | <kbd className="bg-gray-200 px-1 rounded">Ctrl + Espacio</kbd> para Dudar
+        </p>
+
         <FormProvider {...methods}>
           <form onSubmit={methods.handleSubmit(onSubmit)} className="space-y-6">
             <div>
@@ -119,6 +162,7 @@ export default function VisorDualPage({ params }: { params: { subdomain: string;
             <div className="pt-4 flex justify-end space-x-4">
               <button
                 type="button"
+                onClick={onDoubt}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-500 hover:bg-gray-600"
               >
                 Dudar
