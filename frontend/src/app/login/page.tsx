@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 
@@ -15,6 +15,28 @@ export default function LoginPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
   );
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role, tenant_id, tenants(subdomain)')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profile?.role === 'superadmin') {
+          router.push('/superadmin');
+        } else if (profile?.tenants?.subdomain) {
+          router.push(`/${profile.tenants.subdomain}/dashboard`);
+        } else {
+          router.push('/dashboard');
+        }
+      }
+    };
+    checkSession();
+  }, [router, supabase]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,9 +55,22 @@ export default function LoginPage() {
         return;
       }
 
-      // Redirigir al panel de superadmin
-      router.push('/superadmin');
-      router.refresh();
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role, tenant_id, tenants(subdomain)')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (profile?.role === 'superadmin') {
+          router.push('/superadmin');
+        } else if (profile?.tenants?.subdomain) {
+          router.push(`/${profile.tenants.subdomain}/dashboard`);
+        } else {
+          router.push('/dashboard');
+        }
+        router.refresh();
+      }
       
     } catch (err) {
       console.error(err);

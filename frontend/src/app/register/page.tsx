@@ -1,18 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { useRouter } from 'next/navigation';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
   );
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role, tenant_id, tenants(subdomain)')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profile?.role === 'superadmin') {
+          router.push('/superadmin');
+        } else if (profile?.tenants?.subdomain) {
+          router.push(`/${profile.tenants.subdomain}/dashboard`);
+        } else {
+          router.push('/dashboard');
+        }
+      }
+    };
+    checkSession();
+  }, [router, supabase]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();

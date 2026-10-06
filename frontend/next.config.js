@@ -9,7 +9,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backen.onrender.com'}/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com'}/api/:path*`,
       },
     ];
   },

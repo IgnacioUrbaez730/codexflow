@@ -1,0 +1,33 @@
+# Especificación 005: Backoffice de Super-Administrador (Onboarding Manual)
+
+## 1. Objetivo
+Proveer al propietario del sistema (Dueño/Socios) un panel de control global para gestionar las organizaciones (Tenants), asignar cuotas de uso y realizar el proceso de incorporación (onboarding) de nuevos clientes B2B de forma manual (Concierge Onboarding), sin depender de una pasarela de pagos automatizada.
+
+## 2. Requisitos Funcionales (RF)
+
+### RF-1: Gestión de Rol Super-Admin
+- **Ampliación de Roles:** Se agregará el rol `superadmin` a la base de datos, el cual operará por encima de todos los tenants y no estará atado obligatoriamente a un único `tenant_id` comercial.
+- **Mecanismo de Arranque (Bootstrapping):** El sistema detectará automáticamente si la tabla de `user_profiles` está vacía. El *primer* usuario en registrarse en toda la base de datos recibirá automáticamente el rol de `superadmin`. Una vez exista al menos un usuario, esta regla se desactiva permanentemente.
+
+### RF-2: Panel de Control Global (Dashboard Superadmin)
+- **Seguridad y Rutas:** El panel vivirá en la ruta `/superadmin` (o subdominio configurado). Solo los usuarios con rol `superadmin` podrán acceder; cualquier otro rol será expulsado.
+- **Métricas Globales:** El dashboard mostrará una tabla con todos los `tenants` (ONGs) activos en el sistema, mostrando el nombre de la organización, cuota asignada, cuota consumida y fecha de creación.
+
+### RF-3: Concierge Onboarding (Creación de Clientes)
+- **Formulario de Alta de ONG:** El Super Admin tendrá una interfaz para registrar un nuevo cliente. Este formulario pedirá:
+  - Nombre de la Organización.
+  - Límite de Cuota Semanal/Mensual (Freemium o Contrato).
+  - Correo electrónico del responsable (quien será el Administrador del Tenant).
+- **Flujo de Asignación:** Al enviar el formulario, el backend generará el nuevo `tenant_id`, configurará su límite en la tabla `tenant_quotas`, y le enviará un *Magic Link* al correo del cliente. Cuando el cliente inicie sesión por primera vez, el sistema le asignará el rol `admin` atado a ese nuevo `tenant_id`.
+
+### RF-4: Administración Continua
+- **Edición de Cuotas:** El Super Admin podrá editar el límite de procesamiento (`weekly_limit`) de cualquier organización desde la tabla central con un par de clics (útil si la ONG paga por una expansión de contrato).
+- **Invitación de Socios:** El Super Admin podrá invitar a otros correos otorgándoles el nivel `superadmin` para delegar tareas administrativas.
+
+## 3. Requisitos No Funcionales (RNF)
+- **Seguridad RLS Extendida:** Las políticas de Row Level Security (RLS) actuales bloquean lecturas cruzadas. El backend utilizará consultas con privilegios elevados (Service Key o bypass auditado) *únicamente* cuando la solicitud provenga de un token JWT validado con el rol `superadmin`.
+
+### RF-5: Flujo de Autenticación Universal y API Proxy (Actualización de Mantenimiento)
+- **Login Universal (`/login`):** Se establece una única pantalla de acceso global. Tras validar credenciales, el sistema determinará del lado del servidor (SSR) el rol del usuario (`superadmin`, `admin` u `operador`) y lo redirigirá automáticamente a su espacio de trabajo correspondiente.
+- **Redirección Automática de Sesiones Activas:** Si un usuario con una sesión válida intenta acceder a `/login` o `/register`, el servidor SSR interceptará la petición y lo redirigirá instantáneamente a su respectivo Dashboard.
+- **API Proxy Seguro (Next.js Rewrites):** La comunicación entre el Frontend y el Backend (FastAPI) se realizará exclusivamente a través de un proxy inverso. El frontend solicitará rutas relativas (ej. `/api/superadmin/tenants`) y Next.js redirigirá la petición al servidor de Render ocultando la topología de red real y evitando errores de CORS.
