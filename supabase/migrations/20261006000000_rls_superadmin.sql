@@ -4,7 +4,7 @@ RETURNS boolean AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.user_profiles
-    WHERE id = auth.uid() AND role = 'superadmin'
+    WHERE user_id = auth.uid() AND role = 'superadmin'
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

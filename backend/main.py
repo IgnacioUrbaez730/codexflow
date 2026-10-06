@@ -358,7 +358,7 @@ async def export_data_csv(batch_id: Optional[str] = None, x_api_key: str = Heade
 async def get_all_tenants(auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
         # Join tenants and tenant_quotas
-        res = supabase.table("tenants").select("id, name, created_at, tenant_quotas(weekly_limit, current_usage)").execute()
+        res = supabase.table("tenants").select("id, name, created_at, tenant_quotas(weekly_limit, used_this_week)").execute()
         return {"status": "success", "data": res.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

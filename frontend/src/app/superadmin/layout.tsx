@@ -18,7 +18,7 @@ export default async function SuperadminLayout({
   const { data: profile } = await supabase
     .from('user_profiles')
     .select('role')
-    .eq('id', session.user.id)
+    .eq('user_id', session.user.id)
     .single();
 
   if (!profile || profile.role !== 'superadmin') {

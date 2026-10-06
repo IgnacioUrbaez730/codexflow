@@ -6,8 +6,10 @@ interface Tenant {
   id: string;
   name: string;
   created_at: string;
-  weekly_limit: number;
-  current_usage: number;
+  tenant_quotas: {
+    weekly_limit: number;
+    used_this_week: number;
+  };
 }
 
 export default function SuperadminDashboard() {
@@ -42,7 +44,7 @@ export default function SuperadminDashboard() {
 
   const handleEditClick = (tenant: Tenant) => {
     setEditingTenant(tenant);
-    setNewQuota(tenant.weekly_limit);
+    setNewQuota(tenant.tenant_quotas?.weekly_limit || 0);
   };
 
   const handleSaveQuota = async () => {
@@ -94,8 +96,8 @@ export default function SuperadminDashboard() {
                 <tr key={tenant.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm text-gray-900">{tenant.name}</td>
                   <td className="px-4 py-2 text-sm text-gray-900">{new Date(tenant.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-2 text-sm text-gray-900">{tenant.weekly_limit}</td>
-                  <td className="px-4 py-2 text-sm text-gray-900">{tenant.current_usage}</td>
+                  <td className="px-4 py-2 text-sm text-gray-900">{tenant.tenant_quotas?.weekly_limit}</td>
+                  <td className="px-4 py-2 text-sm text-gray-900">{tenant.tenant_quotas?.used_this_week}</td>
                   <td className="px-4 py-2 text-sm">
                     <button
                       onClick={() => handleEditClick(tenant)}
