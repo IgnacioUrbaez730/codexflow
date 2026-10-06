@@ -29,7 +29,7 @@
 - [x] **T8. Frontend: Proteger Rutas del Panel de Control:**
   - Configurar las rutas bajo `/superadmin` implementando una validación del rol en el estado de autenticación (redirección a inicio/login si no es superadmin).
 
-- [ ] **T9. Frontend: Crear Vista de Dashboard Global:**
+- [x] **T9. Frontend: Crear Vista de Dashboard Global:**
   - Desarrollar la tabla de visualización consumiendo `GET /api/superadmin/tenants`.
   - Añadir la capacidad de abrir un diálogo/modal para editar la cuota (llamando a `PUT /api/superadmin/tenants/:id/quota`).
 
