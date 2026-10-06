@@ -15,7 +15,7 @@
 - [x] **T4. Backend: Implementar Middleware Superadmin:**
   - Crear un middleware/guardia en el backend para las rutas `/api/superadmin/*` que valide el token de sesión y confirme explícitamente que el rol del usuario emisor es `superadmin`.
 
-- [ ] **T5. Backend: Crear Endpoint GET de Tenants:**
+- [x] **T5. Backend: Crear Endpoint GET de Tenants:**
   - Implementar `GET /api/superadmin/tenants` para listar todas las organizaciones junto con sus cuotas y consumos actuales (JOIN `tenants` y `tenant_quotas`).
 
 - [ ] **T6. Backend: Crear Endpoint PUT de Cuotas:**
