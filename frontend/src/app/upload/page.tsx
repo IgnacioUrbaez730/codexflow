@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { generateUploadUrl } from "@/actions/uploadActions";
+import { generateUploadUrl } from "../../actions/uploadActions";
 
 export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);

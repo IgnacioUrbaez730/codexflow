@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 export default async function SuperadminLayout({
@@ -7,7 +7,7 @@ export default async function SuperadminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerComponentClient({ cookies });
+  const supabase = createServerClient({ cookies });
   
   const { data: { session } } = await supabase.auth.getSession();
 

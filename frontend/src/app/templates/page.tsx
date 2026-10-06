@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createTemplate, getTemplates } from '../../../actions/templateActions';
+import { createTemplate, getTemplates } from '../../actions/templateActions';
 
 const MASTER_TEMPLATES = {
   BAUTISMO: {
