@@ -28,7 +28,7 @@ export function middleware(req: NextRequest) {
     subdomain = hostnameWithoutPort.replace('.localhost', '');
   } else if (hostnameWithoutPort.includes('localhost') && hostnameWithoutPort !== 'localhost') {
     subdomain = hostnameWithoutPort.split('.')[0];
-  } else if (hostnameWithoutPort !== 'localhost') {
+  } else if (hostnameWithoutPort !== 'localhost' && !/^[0-9.]+$/.test(hostnameWithoutPort) && !hostnameWithoutPort.endsWith('.vercel.app')) {
     // For normal domains (e.g., tenant.app.com)
     const parts = hostnameWithoutPort.split('.');
     if (parts.length >= 3) {
@@ -48,3 +48,4 @@ export function middleware(req: NextRequest) {
   // Otherwise, continue normally (landing page, register, etc.)
   return NextResponse.next();
 }
+
