@@ -34,7 +34,7 @@ export default async function SuperadminLayout({
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError || !session) {
-    redirect('/register');
+    redirect('/login');
   }
 
   const { data: profile } = await supabase

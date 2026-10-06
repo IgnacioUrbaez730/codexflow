@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function SuperadminOnboardingPage() {
   const router = useRouter();
@@ -13,6 +14,11 @@ export default function SuperadminOnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  );
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -23,8 +29,8 @@ export default function SuperadminOnboardingPage() {
     setMessage(null);
 
     try {
-      // Usar localStorage o context según cómo la app guarde el token
-      const token = localStorage.getItem("accessToken") || "";
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
 
       const res = await fetch("/api/superadmin/tenants", {
         method: "POST",
