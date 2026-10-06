@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
-import { createServerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 export default async function SuperadminLayout({
@@ -8,12 +8,12 @@ export default async function SuperadminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerClient({ cookies });
+  const supabase = createServerComponentClient({ cookies });
   
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-  if (!session) {
-    redirect('/login');
+  if (sessionError || !session) {
+    redirect('/register');
   }
 
   const { data: profile } = await supabase
@@ -27,10 +27,9 @@ export default async function SuperadminLayout({
   }
 
   return (
-    <div className="superadmin-layout">
-      {/* Basic wrapper for superadmin views */}
-      <header className="bg-gray-800 text-white p-4">
-        <h1>Superadmin Panel</h1>
+    <div className="superadmin-layout bg-gray-50 min-h-screen text-gray-900">
+      <header className="bg-blue-800 text-white p-4 shadow-md">
+        <h1 className="text-xl font-bold">Panel Global de CodexFlow</h1>
       </header>
       <main className="p-4">
         {children}
@@ -38,4 +37,3 @@ export default async function SuperadminLayout({
     </div>
   );
 }
-
