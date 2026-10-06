@@ -17,3 +17,15 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 ## Próximos pasos (Pendientes)
 - **FASE DE DESPLIEGUE A PRODUCCIÓN.**
 - Tareas: Configurar cuentas reales de Supabase (Prod), Cloudflare R2 (Storage), y desplegar el Frontend (Vercel) y Backend (Render/Railway).
+
+## Registro de Mantenimiento y Bugs Críticos (Spec 005)
+
+Durante la implementación y despliegue del Spec 005, nos encontramos con varios cambios de versión ("Breaking Changes") en las herramientas subyacentes que deben aplicarse a futuras Specs para evitar colapsos:
+
+1. **Next.js 15+ y las Cookies Asíncronas**: La función `cookies()` de `next/headers` ahora devuelve una Promesa. Es OBLIGATORIO usar `await cookies()` antes de intentar acceder a `cookieStore.getAll()`. Si no se hace, el servidor explota con `cookieStore.getAll is not a function`.
+2. **Supabase SSR**: El paquete `@supabase/auth-helpers-nextjs` está deprecado y causa errores de importación (`createServerComponentClient`). La arquitectura oficial y estandarizada ahora es `@supabase/ssr` usando `createServerClient(url, key, { cookies: { ... } })`.
+3. **Tailwind CSS v4**: El archivo `globals.css` no debe usar las directivas obsoletas (`@tailwind base;` etc). La directiva correcta y única para v4 es `@import "tailwindcss";`. Usar la versión vieja causa que Vercel no compile el CSS.
+4. **Vercel Secrets**: Vercel bloquea permanentemente cualquier variable de entorno guardada como "Secret". Variables públicas (con prefijo `NEXT_PUBLIC_`) DEBEN guardarse como "Config" desde el principio; de lo contrario, Vercel impide editarlas y oculta su valor al cliente provocando fallos de "Invalid API Key".
+5. **Convención de Tablas Auth**: El sistema RLS y de gatillos depende de una tabla unificada `user_profiles`. Cualquier referencia antigua a `public.users` en Specs anteriores (ej. Spec 002) causa fallos en cadena.
+
+Todo nuevo código y planificación debe apegarse a estas reglas a partir de ahora.

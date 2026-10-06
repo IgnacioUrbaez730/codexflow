@@ -8,7 +8,7 @@ export default async function SuperadminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -24,7 +24,7 @@ export default async function SuperadminLayout({
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Ignorar error al setear cookies desde Server Component
+            // Ignorar en server components
           }
         },
       },
