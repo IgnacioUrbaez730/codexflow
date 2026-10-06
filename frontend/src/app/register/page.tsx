@@ -26,12 +26,26 @@ export default function RegisterPage() {
           .eq('user_id', session.user.id)
           .single();
         
-        if (profile?.role === 'superadmin') {
+        if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
+          try {
+            const res = await fetch('/api/auth/self-heal', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${session.access_token}` }
+            });
+            if (res.ok) {
+              router.push('/superadmin');
+              return;
+            }
+          } catch (e) {
+            console.error('Self-heal failed', e);
+          }
+          router.push('/pending');
+        } else if (profile?.role === 'superadmin') {
           router.push('/superadmin');
         } else if (profile?.tenants?.subdomain) {
           router.push(`/${profile.tenants.subdomain}/dashboard`);
         } else {
-          router.push('/dashboard');
+          router.push('/pending'); // Corregido: ya no enviamos a /dashboard a ciegas
         }
       }
     };
@@ -55,8 +69,10 @@ export default function RegisterPage() {
         return;
       }
 
-      alert('¡Cuenta de Superadmin creada con éxito! Revisa tu base de datos.');
-      window.location.href = '/superadmin';
+      if (data.user) {
+        // Redirigir a login para que el flujo centralizado maneje el perfil
+        router.push('/login');
+      }
       
     } catch (err) {
       console.error(err);
@@ -69,8 +85,8 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded shadow-md text-gray-900">
-        <h2 className="text-2xl font-bold text-center text-blue-600">Registro de Superadmin</h2>
-        <p className="text-sm text-center text-gray-600">Al ser el primer usuario, el sistema te asignará poder absoluto.</p>
+        <h2 className="text-2xl font-bold text-center text-blue-600">Registro en CodexFlow</h2>
+        <p className="text-sm text-center text-gray-600">Crea tu cuenta para ingresar a la plataforma.</p>
         
         {error && (
           <div className="p-3 text-sm text-red-500 bg-red-100 rounded-md">
@@ -104,7 +120,7 @@ export default function RegisterPage() {
             disabled={isLoading}
             className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
-            {isLoading ? 'Registrando...' : 'Convertirme en Superadmin'}
+            {isLoading ? 'Registrando...' : 'Crear Cuenta'}
           </button>
         </form>
 
