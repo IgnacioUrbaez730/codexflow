@@ -363,7 +363,45 @@ async def get_all_tenants(auth: Dict[str, Any] = Depends(get_superadmin_context)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class TenantCreateRequest(BaseModel):
+    name: str
+    weekly_limit: int
+    admin_email: str
 
+@app.post("/api/superadmin/tenants")
+async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        # Insert new tenant
+        tenant_res = supabase.table("tenants").insert({"name": request.name}).execute()
+        if not tenant_res.data:
+            raise HTTPException(status_code=500, detail="Failed to create tenant")
+        tenant_id = tenant_res.data[0]["id"]
+        
+        # Insert quota
+        quota_data = {"tenant_id": tenant_id, "weekly_limit": request.weekly_limit}
+        supabase.table("tenant_quotas").insert(quota_data).execute()
+        
+        # Invite admin user via Supabase Auth Admin API
+        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email)
+        user_id = invite_res.user.id
+        
+        # Insert/Update user profile
+        profile_data = {
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "role": "admin"
+        }
+        supabase.table("user_profiles").upsert(profile_data).execute()
+        
+        return {
+            "status": "success",
+            "message": "Tenant created and admin invited successfully",
+            "tenant_id": tenant_id
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 class QuotaUpdateRequest(BaseModel):
     weekly_limit: int

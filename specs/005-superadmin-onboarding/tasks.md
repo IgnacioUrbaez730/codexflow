@@ -21,7 +21,7 @@
 - [x] **T6. Backend: Crear Endpoint PUT de Cuotas:**
   - Implementar `PUT /api/superadmin/tenants/:id/quota` para que el Superadmin pueda actualizar el `weekly_limit` de un tenant específico.
 
-- [ ] **T7. Backend: Crear Endpoint POST de Concierge Onboarding:**
+- [x] **T7. Backend: Crear Endpoint POST de Concierge Onboarding:**
   - Implementar `POST /api/superadmin/tenants` recibiendo nombre, límite de cuota y email.
   - Implementar la transacción para insertar en `tenants` y `tenant_quotas`.
   - Integrar la API de administración de usuarios (Supabase Auth Admin) para crear al usuario/enviar invitación o Magic Link, asignándole el nuevo `tenant_id` y el rol `admin`.
