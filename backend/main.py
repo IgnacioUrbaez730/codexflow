@@ -484,8 +484,8 @@ async def resolve_orphan(user_id: str, request: ResolveOrphanRequest, auth: Dict
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/auth/self-heal")
-async def self_heal(authorization: str = Header(None)):
+@app.get("/api/auth/me")
+async def auth_me(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
         
@@ -496,25 +496,40 @@ async def self_heal(authorization: str = Header(None)):
         if not res or not res.user:
             raise HTTPException(status_code=401, detail="Invalid token")
             
-        email = res.user.email
-        superadmin_email = os.getenv("SUPERADMIN_EMAIL")
-        
-        if not superadmin_email or email != superadmin_email:
-            raise HTTPException(status_code=403, detail="Not eligible for self-healing")
-            
         user_id = res.user.id
+        email = res.user.email
         
-        # Update user_profiles
-        supabase.table("user_profiles").update({
-            "role": "superadmin",
-            "tenant_id": None
-        }).eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(subdomain)").eq("user_id", user_id).execute()
+        if not profile_res.data:
+            role = "pending"
+            subdomain = None
+        else:
+            profile = profile_res.data[0]
+            role = profile.get("role")
+            tenants = profile.get("tenants")
+            subdomain = tenants.get("subdomain") if tenants else None
+            
+        if role == "pending":
+            superadmin_email = os.getenv("SUPERADMIN_EMAIL")
+            if superadmin_email and email == superadmin_email:
+                supabase.table("user_profiles").update({
+                    "role": "superadmin",
+                    "tenant_id": None
+                }).eq("user_id", user_id).execute()
+                import logging
+                logging.info(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
+                return {"role": "superadmin", "redirect_url": "/superadmin"}
+            else:
+                return {"role": "pending", "redirect_url": "/pending"}
+                
+        if role == "superadmin":
+            return {"role": "superadmin", "redirect_url": "/superadmin"}
+            
+        if role in ["admin", "digitador", "archivist"] and subdomain:
+            return {"role": role, "redirect_url": f"/{subdomain}/dashboard"}
+            
+        return {"role": role, "redirect_url": "/pending"}
         
-        import logging
-        logging.info(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
-        print(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
-        
-        return {"status": "success", "message": "Elevated to superadmin"}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e

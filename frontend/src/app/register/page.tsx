@@ -20,32 +20,19 @@ export default function RegisterPage() {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('role, tenant_id, tenants(subdomain)')
-          .eq('user_id', session.user.id)
-          .single();
-        
-        if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
-          try {
-            const res = await fetch('/api/auth/self-heal', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${session.access_token}` }
-            });
-            if (res.ok) {
-              router.push('/superadmin');
-              return;
-            }
-          } catch (e) {
-            console.error('Self-heal failed', e);
+        try {
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            router.push(data.redirect_url);
+          } else {
+            router.push('/pending');
           }
+        } catch (e) {
+          console.error('Auth verification failed', e);
           router.push('/pending');
-        } else if (profile?.role === 'superadmin') {
-          router.push('/superadmin');
-        } else if (profile?.tenants?.subdomain) {
-          router.push(`/${profile.tenants.subdomain}/dashboard`);
-        } else {
-          router.push('/pending'); // Corregido: ya no enviamos a /dashboard a ciegas
         }
       }
     };
