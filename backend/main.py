@@ -364,3 +364,18 @@ async def get_all_tenants(auth: Dict[str, Any] = Depends(get_superadmin_context)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+class QuotaUpdateRequest(BaseModel):
+    weekly_limit: int
+
+@app.put("/api/superadmin/tenants/{tenant_id}/quota")
+async def update_tenant_quota(tenant_id: str, request: QuotaUpdateRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        res = supabase.table("tenant_quotas").update({"weekly_limit": request.weekly_limit}).eq("tenant_id", tenant_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Tenant quota not found")
+        return {"status": "success", "message": "Quota updated successfully", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
