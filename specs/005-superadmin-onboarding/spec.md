@@ -31,3 +31,12 @@ Proveer al propietario del sistema (Dueño/Socios) un panel de control global pa
 - **Login Universal (`/login`):** Se establece una única pantalla de acceso global. Tras validar credenciales, el sistema determinará del lado del servidor (SSR) el rol del usuario (`superadmin`, `admin` u `operador`) y lo redirigirá automáticamente a su espacio de trabajo correspondiente.
 - **Redirección Automática de Sesiones Activas:** Si un usuario con una sesión válida intenta acceder a `/login` o `/register`, el servidor SSR interceptará la petición y lo redirigirá instantáneamente a su respectivo Dashboard.
 - **API Proxy Seguro (Next.js Rewrites):** La comunicación entre el Frontend y el Backend (FastAPI) se realizará exclusivamente a través de un proxy inverso. El frontend solicitará rutas relativas (ej. `/api/superadmin/tenants`) y Next.js redirigirá la petición al servidor de Render ocultando la topología de red real y evitando errores de CORS.
+
+### RF-6: Manejo de Usuarios Huérfanos (Hotfix)
+- **Ruta de Espera (`/pending`):** Si un usuario inicia sesión sin `rol` ni `tenant_id`, será redirigido a `/pending` en lugar de dar 404. La página mostrará un mensaje de espera, un botón de "Cerrar Sesión", y un enlace `mailto:` que inyectará automáticamente el email del usuario en el Asunto del correo. La reevaluación de sus permisos será manual (refrescar con F5).
+- **Alerta en Panel Global:** El Dashboard del Superadmin mostrará de forma proactiva un indicador visual o contador avisando que existen "Usuarios en espera de asignación".
+- **Gestión desde Panel:** El Superadmin podrá procesar a estos usuarios huérfanos con tres acciones:
+  1. *Asignar a ONG Existente:* Usando un desplegable.
+  2. *Crear Nueva ONG:* Generar el Tenant y asignarlo en un solo paso.
+  3. *Rechazar:* Marcar al usuario como rechazado permanentemente.
+- **Estado 'Rechazado' (Arquitectura):** Se agregará el valor `'rejected'` al ENUM `user_role` en la base de datos. Si un usuario tiene este rol, la vista `/pending` cambiará su estado visual a "Acceso Denegado Permanentemente".

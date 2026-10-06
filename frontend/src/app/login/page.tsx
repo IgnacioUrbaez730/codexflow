@@ -26,7 +26,9 @@ export default function LoginPage() {
           .eq('user_id', session.user.id)
           .single();
         
-        if (profile?.role === 'superadmin') {
+        if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
+          router.push('/pending');
+        } else if (profile?.role === 'superadmin') {
           router.push('/superadmin');
         } else if (profile?.tenants?.subdomain) {
           router.push(`/${profile.tenants.subdomain}/dashboard`);
@@ -62,7 +64,9 @@ export default function LoginPage() {
           .eq('user_id', data.user.id)
           .single();
 
-        if (profile?.role === 'superadmin') {
+        if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
+          router.push('/pending');
+        } else if (profile?.role === 'superadmin') {
           router.push('/superadmin');
         } else if (profile?.tenants?.subdomain) {
           router.push(`/${profile.tenants.subdomain}/dashboard`);

@@ -15,11 +15,24 @@ interface Tenant {
   };
 }
 
+interface Orphan {
+  user_id: string;
+  email: string;
+  role: string | null;
+}
+
 export default function SuperadminDashboard() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [orphans, setOrphans] = useState<Orphan[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [newQuota, setNewQuota] = useState<number | "">("");
+  
+  const [resolvingUserId, setResolvingUserId] = useState<string | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<string>("admin");
+  const [newTenantName, setNewTenantName] = useState<string>("");
+
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -43,7 +56,7 @@ export default function SuperadminDashboard() {
       });
       if (res.ok) {
         const data = await res.json();
-        setTenants(data.tenants || data);
+        setTenants(data.tenants || data.data || []);
       }
     } catch (error) {
       console.error("Error fetching tenants:", error);
@@ -52,8 +65,24 @@ export default function SuperadminDashboard() {
     }
   };
 
+  const fetchOrphans = async () => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/superadmin/orphans", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOrphans(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching orphans:", error);
+    }
+  };
+
   useEffect(() => {
     fetchTenants();
+    fetchOrphans();
   }, []);
 
   const handleEditClick = (tenant: Tenant) => {
@@ -87,6 +116,36 @@ export default function SuperadminDashboard() {
     }
   };
 
+  const handleResolve = async (userId: string, action: "assign" | "reject" | "create_tenant") => {
+    try {
+      const token = await getAuthToken();
+      let body: any = { action };
+      if (action === "assign") {
+        body = { action, tenant_id: selectedTenantId, role: selectedRole };
+      } else if (action === "create_tenant") {
+        body = { action, tenant_name: newTenantName };
+      }
+
+      const res = await fetch(`/api/superadmin/orphans/${userId}/resolve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        await fetchOrphans();
+        setResolvingUserId(null);
+      } else {
+        console.error("Error resolving orphan");
+      }
+    } catch (error) {
+      console.error("Error resolving orphan:", error);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
@@ -115,6 +174,115 @@ export default function SuperadminDashboard() {
         </div>
       </div>
       
+      {orphans.length > 0 && (
+        <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-yellow-800">
+                Usuarios Pendientes ({orphans.length})
+              </h2>
+              <p className="text-sm text-yellow-700">
+                Hay usuarios que se han registrado y están esperando asignación a una organización.
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-4 overflow-x-auto bg-white rounded shadow-sm border border-yellow-100">
+            <table className="min-w-full table-auto">
+              <thead className="bg-yellow-100/50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Email</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Estado</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-yellow-100">
+                {orphans.map(orphan => (
+                  <tr key={orphan.user_id}>
+                    <td className="px-4 py-3 text-sm text-gray-900">{orphan.email}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Sin asignar</td>
+                    <td className="px-4 py-3 text-sm">
+                      {resolvingUserId === orphan.user_id ? (
+                        <div className="flex items-center gap-2">
+                          <select 
+                            value={selectedTenantId} 
+                            onChange={(e) => setSelectedTenantId(e.target.value)}
+                            className="border border-gray-300 rounded px-2 py-1 text-xs"
+                          >
+                            <option value="">Seleccionar ONG</option>
+                            <option value="new">-- Crear Nueva ONG --</option>
+                            {tenants.map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          {selectedTenantId === "new" ? (
+                            <input 
+                              type="text" 
+                              placeholder="Nombre nueva ONG" 
+                              value={newTenantName} 
+                              onChange={(e) => setNewTenantName(e.target.value)}
+                              className="border border-gray-300 rounded px-2 py-1 text-xs w-32"
+                            />
+                          ) : (
+                            <select 
+                              value={selectedRole} 
+                              onChange={(e) => setSelectedRole(e.target.value)}
+                              className="border border-gray-300 rounded px-2 py-1 text-xs"
+                            >
+                              <option value="admin">Admin</option>
+                              <option value="operador">Operador</option>
+                            </select>
+                          )}
+                          <button 
+                            onClick={() => {
+                              if (selectedTenantId === "new") handleResolve(orphan.user_id, "create_tenant");
+                              else handleResolve(orphan.user_id, "assign");
+                            }}
+                            disabled={!selectedTenantId || (selectedTenantId === "new" && !newTenantName) || (selectedTenantId !== "new" && !selectedRole)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                          >
+                            {selectedTenantId === "new" ? "Crear y Asignar" : "Asignar"}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setResolvingUserId(null);
+                              setNewTenantName("");
+                            }}
+
+                            className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-xs"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setResolvingUserId(orphan.user_id);
+                              setSelectedTenantId("");
+                              setSelectedRole("admin");
+                            }}
+                            className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded text-xs font-medium"
+                          >
+                            Resolver
+                          </button>
+                          <button 
+                            onClick={() => handleResolve(orphan.user_id, "reject")}
+                            className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded text-xs font-medium"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="p-12 text-center text-gray-500">Cargando organizaciones...</div>
       ) : (

@@ -417,3 +417,69 @@ async def update_tenant_quota(tenant_id: str, request: QuotaUpdateRequest, auth:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/superadmin/orphans")
+async def get_orphans(auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        res = supabase.table("user_profiles").select("*").is_("tenant_id", "null").execute()
+        
+        orphans = []
+        for p in res.data:
+            if p.get("role") != "rejected":
+                try:
+                    user_data = supabase.auth.admin.get_user_by_id(p["user_id"])
+                    email = user_data.user.email
+                except:
+                    email = "Unknown"
+                
+                orphans.append({
+                    "user_id": p["user_id"],
+                    "role": p.get("role"),
+                    "email": email
+                })
+        return {"status": "success", "data": orphans}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ResolveOrphanRequest(BaseModel):
+    action: str
+    tenant_id: Optional[str] = None
+    role: Optional[str] = None
+    tenant_name: Optional[str] = None
+
+@app.post("/api/superadmin/orphans/{user_id}/resolve")
+async def resolve_orphan(user_id: str, request: ResolveOrphanRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        if request.action == "reject":
+            res = supabase.table("user_profiles").update({"role": "rejected"}).eq("user_id", user_id).execute()
+        elif request.action == "assign":
+            if not request.tenant_id or not request.role:
+                raise HTTPException(status_code=400, detail="tenant_id and role required for assign")
+            res = supabase.table("user_profiles").update({
+                "tenant_id": request.tenant_id,
+                "role": request.role
+            }).eq("user_id", user_id).execute()
+        elif request.action == "create_tenant":
+            if not request.tenant_name:
+                raise HTTPException(status_code=400, detail="tenant_name required for create_tenant")
+            tenant_res = supabase.table("tenants").insert({"name": request.tenant_name}).execute()
+            if not tenant_res.data:
+                raise HTTPException(status_code=500, detail="Failed to create tenant")
+            new_tenant_id = tenant_res.data[0]["id"]
+            quota_data = {"tenant_id": new_tenant_id, "weekly_limit": 500}
+            supabase.table("tenant_quotas").insert(quota_data).execute()
+            res = supabase.table("user_profiles").update({
+                "tenant_id": new_tenant_id,
+                "role": "admin"
+            }).eq("user_id", user_id).execute()
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
+            
+        if not res.data:
+            raise HTTPException(status_code=404, detail="User profile not found")
+            
+        return {"status": "success", "message": "Orphan resolved", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
