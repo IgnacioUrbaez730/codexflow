@@ -512,10 +512,11 @@ async def auth_me(authorization: str = Header(None)):
         if role == "pending":
             superadmin_email = os.getenv("SUPERADMIN_EMAIL")
             if superadmin_email and email == superadmin_email:
-                supabase.table("user_profiles").update({
+                supabase.table("user_profiles").upsert({
+                    "user_id": user_id,
                     "role": "superadmin",
                     "tenant_id": None
-                }).eq("user_id", user_id).execute()
+                }).execute()
                 import logging
                 logging.info(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
                 return {"role": "superadmin", "redirect_url": "/superadmin"}
