@@ -3,21 +3,17 @@
 Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo ~50 líneas. Resume el estado y decisiones clave.
 
 ## Estado actual
-- **Fase:** Implementación de la Spec 002 (Módulo 2).
-- **Progreso:** Tareas T1 a T6 completadas con éxito.
-  - T1: RLS y Base de Datos creados.
-  - T2: Gestión de Plantillas creada.
-  - T3: URLs Firmadas y Subida a Cloudflare R2 completada.
-  - T4: FastAPI Backend estructurado.
-  - T5: Worker de procesamiento (Poppler/Vips) programado.
-  - T6: Visor Dual (OpenSeadragon) creado en Frontend.
+- **Fase:** Módulo 5 COMPLETADO (Backoffice de Super-Administrador y Onboarding Manual). EL SAAS ESTÁ TERMINADO A NIVEL CÓDIGO.
+- **Progreso Módulo 5:** Tareas T1 a T10 implementadas. QA Aprobó tras corregir bugs de esquema.
+  - Roles: Rol `superadmin` añadido.
+  - Seguridad: Middleware `get_superadmin_context` para blindar `/api/superadmin`. Función SQL `is_superadmin()` con `SECURITY DEFINER` para hacer bypass RLS.
+  - Bootstrapping: Trigger en BD que corona al primer usuario registrado automáticamente.
+  - Onboarding: Concierge Onboarding implementado (`/superadmin/new`). El sistema crea el Tenant, asigna la cuota y envía un Magic Link de Supabase al dueño de la ONG.
 
 ## Decisiones Técnicas (y por qué)
-- **Metodología:** SDD gestionado por Antigravity (El Coordinador).
-- **Stack Aprobado:** Next.js (Front) + FastAPI Python (Back) + Supabase (BD, Auth) + Cloudflare R2 (Storage).
-- **Infraestructura:** Vercel (Front) y Render (Back) conectados vía GitHub. Despliegues automatizados por el agente.
-- **Seguridad:** Variables de entorno sensibles (`.env.local`) removidas del control de versiones tras bloqueo preventivo de GitHub.
+- **Desvío del Roadmap (Sin Pasarela de Pagos):** Por instrucciones del fundador, el SaaS no tendrá Stripe por ahora. Se venderá la licencia directamente a la ONG (uso exclusivo/marca blanca).
+- **Control de RAM y Cuellos de Botella:** La arquitectura se refactorizó para correr con un Semáforo de concurrencia y un Streamer de CSV. Así aseguramos que el OCR y la descarga masiva no exploten el servidor gratuito de 512MB de Render.
 
 ## Próximos pasos (Pendientes)
-- **MÓDULO 2 COMPLETADO.**
-- A la espera de instrucciones para iniciar la especificación del Módulo 3 (Fase de IA / Modelo Predictivo).
+- **FASE DE DESPLIEGUE A PRODUCCIÓN.**
+- Tareas: Configurar cuentas reales de Supabase (Prod), Cloudflare R2 (Storage), y desplegar el Frontend (Vercel) y Backend (Render/Railway).

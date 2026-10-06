@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -37,3 +38,4 @@ export default async function SuperadminLayout({
     </div>
   );
 }
+
