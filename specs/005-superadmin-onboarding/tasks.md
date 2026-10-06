@@ -33,6 +33,6 @@
   - Desarrollar la tabla de visualización consumiendo `GET /api/superadmin/tenants`.
   - Añadir la capacidad de abrir un diálogo/modal para editar la cuota (llamando a `PUT /api/superadmin/tenants/:id/quota`).
 
-- [ ] **T10. Frontend: Crear Vista de Onboarding de Cliente:**
+- [x] **T10. Frontend: Crear Vista de Onboarding de Cliente:**
   - Construir el formulario para "Concierge Onboarding" pidiendo: Nombre, Cuota y Email.
   - Conectar el formulario al endpoint `POST /api/superadmin/tenants`. Mostrar notificaciones de éxito o error al usuario.
