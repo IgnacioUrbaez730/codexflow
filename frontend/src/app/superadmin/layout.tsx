@@ -37,13 +37,24 @@ export default async function SuperadminLayout({
     redirect('/login');
   }
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role')
-    .eq('user_id', session.user.id)
-    .single();
-
-  if (!profile || profile.role !== 'superadmin') {
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const res = await fetch(`${backendUrl}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      redirect('/');
+    }
+    
+    const data = await res.json();
+    if (data.role !== 'superadmin') {
+      redirect('/');
+    }
+  } catch (error) {
     redirect('/');
   }
 
