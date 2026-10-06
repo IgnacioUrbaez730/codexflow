@@ -38,7 +38,7 @@ export default async function SuperadminLayout({
   }
 
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
     const res = await fetch(`${backendUrl}/api/auth/me`, {
       headers: {
         Authorization: `Bearer ${session.access_token}`
