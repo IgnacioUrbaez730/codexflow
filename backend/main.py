@@ -505,11 +505,10 @@ async def self_heal(authorization: str = Header(None)):
         user_id = res.user.id
         
         # Update user_profiles
-        supabase.table("user_profiles").upsert({
-            "user_id": user_id,
+        supabase.table("user_profiles").update({
             "role": "superadmin",
             "tenant_id": None
-        }).execute()
+        }).eq("user_id", user_id).execute()
         
         import logging
         logging.info(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
