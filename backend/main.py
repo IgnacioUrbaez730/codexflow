@@ -421,7 +421,7 @@ async def update_tenant_quota(tenant_id: str, request: QuotaUpdateRequest, auth:
 @app.get("/api/superadmin/orphans")
 async def get_orphans(auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
-        res = supabase.table("user_profiles").select("*").is_("tenant_id", "null").execute()
+        res = supabase.table("user_profiles").select("*").eq("role", "pending").execute()
         
         orphans = []
         for p in res.data:
