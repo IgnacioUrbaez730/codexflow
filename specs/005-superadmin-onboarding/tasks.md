@@ -26,7 +26,7 @@
   - Implementar la transacción para insertar en `tenants` y `tenant_quotas`.
   - Integrar la API de administración de usuarios (Supabase Auth Admin) para crear al usuario/enviar invitación o Magic Link, asignándole el nuevo `tenant_id` y el rol `admin`.
 
-- [ ] **T8. Frontend: Proteger Rutas del Panel de Control:**
+- [x] **T8. Frontend: Proteger Rutas del Panel de Control:**
   - Configurar las rutas bajo `/superadmin` implementando una validación del rol en el estado de autenticación (redirección a inicio/login si no es superadmin).
 
 - [ ] **T9. Frontend: Crear Vista de Dashboard Global:**
