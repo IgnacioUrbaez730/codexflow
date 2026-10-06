@@ -483,3 +483,41 @@ async def resolve_orphan(user_id: str, request: ResolveOrphanRequest, auth: Dict
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/self-heal")
+async def self_heal(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+        
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        email = res.user.email
+        superadmin_email = os.getenv("SUPERADMIN_EMAIL")
+        
+        if not superadmin_email or email != superadmin_email:
+            raise HTTPException(status_code=403, detail="Not eligible for self-healing")
+            
+        user_id = res.user.id
+        
+        # Update user_profiles
+        supabase.table("user_profiles").upsert({
+            "user_id": user_id,
+            "role": "superadmin",
+            "tenant_id": None
+        }).execute()
+        
+        import logging
+        logging.info(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
+        print(f"AUDIT: Usuario {email} auto-reparado y elevado a Super Admin")
+        
+        return {"status": "success", "message": "Elevated to superadmin"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+

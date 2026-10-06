@@ -27,6 +27,20 @@ export default function LoginPage() {
           .single();
         
         if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
+          try {
+            const res = await fetch('/api/auth/self-heal', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`
+              }
+            });
+            if (res.ok) {
+              router.push('/superadmin');
+              return;
+            }
+          } catch (e) {
+            console.error('Self-heal failed', e);
+          }
           router.push('/pending');
         } else if (profile?.role === 'superadmin') {
           router.push('/superadmin');
@@ -65,6 +79,21 @@ export default function LoginPage() {
           .single();
 
         if (profile?.role === 'rejected' || (!profile?.tenant_id && !profile?.role)) {
+          try {
+            const res = await fetch('/api/auth/self-heal', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${data.session?.access_token}`
+              }
+            });
+            if (res.ok) {
+              router.push('/superadmin');
+              router.refresh();
+              return;
+            }
+          } catch (e) {
+            console.error('Self-heal failed', e);
+          }
           router.push('/pending');
         } else if (profile?.role === 'superadmin') {
           router.push('/superadmin');

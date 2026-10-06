@@ -6,8 +6,8 @@ Proveer al propietario del sistema (Dueño/Socios) un panel de control global pa
 ## 2. Requisitos Funcionales (RF)
 
 ### RF-1: Gestión de Rol Super-Admin
-- **Ampliación de Roles:** Se agregará el rol `superadmin` a la base de datos, el cual operará por encima de todos los tenants y no estará atado obligatoriamente a un único `tenant_id` comercial.
-- **Mecanismo de Arranque (Bootstrapping):** El sistema detectará automáticamente si la tabla de `user_profiles` está vacía. El *primer* usuario en registrarse en toda la base de datos recibirá automáticamente el rol de `superadmin`. Una vez exista al menos un usuario, esta regla se desactiva permanentemente.
+- **Ampliación de Roles:** Se agregará el rol `superadmin` a la base de datos. Operará globalmente sin estar atado a un tenant (`tenant_id = NULL`).
+- **Lógica de Auto-Reparación (Lista Blanca):** Se descarta la validación cronológica. En su lugar, el backend (FastAPI) utilizará una variable de entorno secreta (`SUPERADMIN_EMAIL`). Si el Middleware Global detecta a un usuario sin rol, consultará al backend. El backend verificará criptográficamente el JWT; si el email del token coincide con la variable maestra, le inyectará el rol `superadmin`, imprimirá un log de auditoría en consola (simulando alerta) y le dará Pase Directo a `/superadmin`.
 
 ### RF-2: Panel de Control Global (Dashboard Superadmin)
 - **Seguridad y Rutas:** El panel vivirá en la ruta `/superadmin` (o subdominio configurado). Solo los usuarios con rol `superadmin` podrán acceder; cualquier otro rol será expulsado.
