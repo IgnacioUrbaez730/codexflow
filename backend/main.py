@@ -499,15 +499,15 @@ async def auth_me(authorization: str = Header(None)):
         user_id = res.user.id
         email = res.user.email
         
-        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(subdomain)").eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(name)").eq("user_id", user_id).execute()
         if not profile_res.data:
             role = "pending"
-            subdomain = None
+            tenant_name = None
         else:
             profile = profile_res.data[0]
             role = profile.get("role")
             tenants = profile.get("tenants")
-            subdomain = tenants.get("subdomain") if tenants else None
+            tenant_name = tenants.get("name") if tenants else None
             
         if role == "pending":
             superadmin_email = os.getenv("SUPERADMIN_EMAIL")
@@ -525,8 +525,8 @@ async def auth_me(authorization: str = Header(None)):
         if role == "superadmin":
             return {"role": "superadmin", "redirect_url": "/superadmin"}
             
-        if role in ["admin", "digitador", "archivist"] and subdomain:
-            return {"role": role, "redirect_url": f"/{subdomain}/dashboard"}
+        if role in ["admin", "digitador", "archivist"] and tenant_name:
+            return {"role": role, "redirect_url": f"/{tenant_name}/dashboard"}
             
         return {"role": role, "redirect_url": "/pending"}
         
