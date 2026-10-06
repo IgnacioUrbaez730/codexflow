@@ -6,7 +6,7 @@
   - Crear la tabla `tenant_quotas` (tenant_id, weekly_limit, current_usage, updated_at).
   - Asegurar que `user_profiles` soporte `tenant_id` referenciando a `tenants`.
 
-- [ ] **T2. Implementar Políticas RLS Extendidas:**
+- [x] **T2. Implementar Políticas RLS Extendidas:**
   - Crear o ajustar las políticas de Row Level Security (RLS) en `tenants`, `tenant_quotas` y `user_profiles` para que los usuarios con rol `superadmin` tengan permisos totales (`ALL`) de lectura y escritura.
 
 - [ ] **T3. Implementar Mecanismo de Bootstrapping (Trigger/Backend):**
