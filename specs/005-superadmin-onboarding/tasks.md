@@ -12,7 +12,7 @@
 - [x] **T3. Implementar Mecanismo de Bootstrapping (Trigger/Backend):**
   - Desarrollar la lógica (mediante Trigger en DB o en el proceso de creación de usuario/webhook de Auth) que cuente los registros en `user_profiles`. Si el resultado es `0`, forzar la asignación del rol `superadmin` al usuario que se está creando.
 
-- [ ] **T4. Backend: Implementar Middleware Superadmin:**
+- [x] **T4. Backend: Implementar Middleware Superadmin:**
   - Crear un middleware/guardia en el backend para las rutas `/api/superadmin/*` que valide el token de sesión y confirme explícitamente que el rol del usuario emisor es `superadmin`.
 
 - [ ] **T5. Backend: Crear Endpoint GET de Tenants:**

@@ -52,6 +52,28 @@ async def get_auth_context(authorization: str = Header(...)) -> Dict[str, Any]:
             raise e
         raise HTTPException(status_code=401, detail=f"Authentication failed")
 
+async def get_superadmin_context(authorization: str = Header(...)) -> Dict[str, Any]:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        user_id = res.user.id
+        profile_res = supabase.table("user_profiles").select("role").eq("user_id", user_id).execute()
+        
+        if not profile_res.data or profile_res.data[0].get("role") != "superadmin":
+            raise HTTPException(status_code=403, detail="Forbidden: Superadmin access required")
+            
+        return {"user_id": user_id, "role": "superadmin"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
 class InviteRequest(BaseModel):
     email: str
     role: str
