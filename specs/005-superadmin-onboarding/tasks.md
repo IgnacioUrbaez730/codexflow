@@ -9,7 +9,7 @@
 - [x] **T2. Implementar Políticas RLS Extendidas:**
   - Crear o ajustar las políticas de Row Level Security (RLS) en `tenants`, `tenant_quotas` y `user_profiles` para que los usuarios con rol `superadmin` tengan permisos totales (`ALL`) de lectura y escritura.
 
-- [ ] **T3. Implementar Mecanismo de Bootstrapping (Trigger/Backend):**
+- [x] **T3. Implementar Mecanismo de Bootstrapping (Trigger/Backend):**
   - Desarrollar la lógica (mediante Trigger en DB o en el proceso de creación de usuario/webhook de Auth) que cuente los registros en `user_profiles`. Si el resultado es `0`, forzar la asignación del rol `superadmin` al usuario que se está creando.
 
 - [ ] **T4. Backend: Implementar Middleware Superadmin:**
