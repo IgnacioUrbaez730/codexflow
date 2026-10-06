@@ -10,8 +10,6 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [subdomain, setSubdomain] = useState('');
-  const [timezone, setTimezone] = useState('UTC');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,21 +19,20 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      // Verificación de subdominio
-      const { data: existingOrg, error: orgError } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('subdomain', subdomain)
-        .maybeSingle();
+      const { data, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-      if (existingOrg) {
-        setError('El subdominio ya está en uso. Por favor, elige otro.');
+      if (authError) {
+        setError(authError.message);
         setIsLoading(false);
         return;
       }
 
-      // TODO: Connect with Supabase Auth
-      console.log({ email, password, subdomain, timezone });
+      alert('¡Cuenta de Superadmin creada con éxito! Revisa tu base de datos.');
+      window.location.href = '/superadmin';
+      
     } catch (err) {
       console.error(err);
       setError('Ocurrió un error inesperado.');
@@ -46,8 +43,9 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded shadow-md">
-        <h2 className="text-2xl font-bold text-center">Registro de Inquilino</h2>
+      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded shadow-md text-gray-900">
+        <h2 className="text-2xl font-bold text-center text-blue-600">Registro de Superadmin</h2>
+        <p className="text-sm text-center text-gray-600">Al ser el primer usuario, el sistema te asignará poder absoluto.</p>
         
         {error && (
           <div className="p-3 text-sm text-red-500 bg-red-100 rounded-md">
@@ -63,7 +61,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
+              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200 text-gray-900"
             />
           </div>
           <div>
@@ -73,38 +71,15 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
+              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200 text-gray-900"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Subdominio</label>
-            <input
-              type="text"
-              value={subdomain}
-              onChange={(e) => setSubdomain(e.target.value)}
-              required
-              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Timezone</label>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
-            >
-              <option value="UTC">UTC</option>
-              <option value="America/New_York">America/New_York</option>
-              <option value="America/Caracas">America/Caracas</option>
-              <option value="Europe/Madrid">Europe/Madrid</option>
-            </select>
           </div>
           <button
             type="submit"
             disabled={isLoading}
             className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
-            {isLoading ? 'Registrando...' : 'Registrar'}
+            {isLoading ? 'Registrando...' : 'Convertirme en Superadmin'}
           </button>
         </form>
       </div>
