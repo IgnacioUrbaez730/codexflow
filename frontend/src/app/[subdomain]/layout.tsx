@@ -28,8 +28,7 @@ export default function SubdomainLayout({
           return;
         }
 
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
-        const res = await fetch(`${backendUrl}/api/auth/me`, {
+        const res = await fetch(`/api/auth/me`, {
           headers: {
             Authorization: `Bearer ${session.access_token}`
           }
@@ -46,6 +45,9 @@ export default function SubdomainLayout({
               return;
             }
           }
+        } else {
+          await supabase.auth.signOut();
+          router.replace("/login");
         }
       } catch (err) {
         console.error("Auth check failed:", err);

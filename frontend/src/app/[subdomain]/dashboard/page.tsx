@@ -16,28 +16,24 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
     const fetchData = async () => {
       setLoading(true);
       try {
-        const token = localStorage.getItem('supabase.auth.token');
-        const headers: Record<string, string> = {};
-        if (token) {
-          const parsed = JSON.parse(token);
-          headers['Authorization'] = `Bearer ${parsed.currentSession.access_token}`;
-        }
+        const { createClient } = await import('../../lib/supabase');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
         
-        // Mock token fallback
-        if (!headers['Authorization']) {
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        } else {
           headers['Authorization'] = 'Bearer DUMMY';
         }
 
-        const res = await fetch('/api/tenant/metrics', {
-          headers
-        });
+        const res = await fetch('/api/tenant/metrics', { headers });
         
         if (res.ok) {
           const json = await res.json();
           setData(json);
         } else {
           console.error("Failed to fetch metrics");
-          // Fallback en caso de error
           setData({
             productivity: [],
             uploadedCount: 0,
