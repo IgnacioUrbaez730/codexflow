@@ -17,26 +17,43 @@ export default function LoginPage() {
   );
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        try {
-          const res = await fetch('/api/auth/me', {
-            headers: { 'Authorization': `Bearer ${session.access_token}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            router.push(data.redirect_url);
-          } else {
-            router.push('/pending');
-          }
-        } catch (e) {
-          console.error('Auth verification failed', e);
+    let mounted = true;
+
+    const checkAndRedirect = async (session: any) => {
+      if (!session || !mounted) return;
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
+        const res = await fetch(`${backendUrl}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          router.push(data.redirect_url);
+        } else {
           router.push('/pending');
         }
+      } catch (e) {
+        console.error('Auth verification failed', e);
+        router.push('/pending');
       }
     };
-    checkSession();
+
+    // 1. Escuchar eventos (como cuando Supabase procesa el Magic Link desde el Hash)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        checkAndRedirect(session);
+      }
+    });
+
+    // 2. Revisar si ya hay sesion activa al montar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkAndRedirect(session);
+    });
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, [router, supabase]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -58,7 +75,8 @@ export default function LoginPage() {
 
       if (data.user) {
         try {
-          const res = await fetch('/api/auth/me', {
+          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
+          const res = await fetch(`${backendUrl}/api/auth/me`, {
             headers: { 'Authorization': `Bearer ${data.session?.access_token}` }
           });
           if (res.ok) {
