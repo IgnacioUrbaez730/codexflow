@@ -1,9 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-// Mock data interfaces
 interface DashboardData {
-  productivity: { date: string; count: number }[];
+  productivity: { date: string; folios: number }[];
   uploadedCount: number;
   verifiedCount: number;
   quota: { used_this_week: number; weekly_limit: number };
@@ -12,51 +11,48 @@ interface DashboardData {
 export default function DashboardPage({ params }: { params: { subdomain: string } }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   useEffect(() => {
-    // Simulating data fetch from Supabase/API
     const fetchData = async () => {
       setLoading(true);
-      // In a real scenario, we would use Supabase client or fetch() here
-      // const { data, error } = await supabase.from('...').select('...');
-      setTimeout(() => {
-        setData({
-          productivity: [
-            { date: '2026-10-01', count: 12 },
-            { date: '2026-10-02', count: 19 },
-            { date: '2026-10-03', count: 15 },
-            { date: '2026-10-04', count: 22 },
-            { date: '2026-10-05', count: 30 },
-          ],
-          uploadedCount: 150,
-          verifiedCount: 98,
-          quota: { used_this_week: 1000, weekly_limit: 1000 }, // Simulated expired quota
+      try {
+        const token = localStorage.getItem('supabase.auth.token');
+        const headers: Record<string, string> = {};
+        if (token) {
+          const parsed = JSON.parse(token);
+          headers['Authorization'] = `Bearer ${parsed.currentSession.access_token}`;
+        }
+        
+        // Mock token fallback
+        if (!headers['Authorization']) {
+          headers['Authorization'] = 'Bearer DUMMY';
+        }
+
+        const res = await fetch('/api/tenant/metrics', {
+          headers
         });
+        
+        if (res.ok) {
+          const json = await res.json();
+          setData(json);
+        } else {
+          console.error("Failed to fetch metrics");
+          // Fallback en caso de error
+          setData({
+            productivity: [],
+            uploadedCount: 0,
+            verifiedCount: 0,
+            quota: { used_this_week: 0, weekly_limit: 1000 }
+          });
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
         setLoading(false);
-      }, 500);
+      }
     };
     fetchData();
   }, [params.subdomain]);
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail) return;
-    
-    setInviteStatus('sending');
-    setTimeout(() => {
-      setInviteStatus('sent');
-      setInviteEmail('');
-    }, 1000);
-  };
-
-  const handleResend = () => {
-    setInviteStatus('sending');
-    setTimeout(() => {
-      setInviteStatus('sent');
-    }, 1000);
-  };
 
   const isQuotaExpired = data && data.quota.used_this_week >= data.quota.weekly_limit;
 
@@ -92,7 +88,7 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
             <div className="text-center">
               <p className="text-gray-500 text-sm">Conversión</p>
               <p className="text-3xl font-bold text-purple-600">
-                {data ? Math.round((data.verifiedCount / data.uploadedCount) * 100) : 0}%
+                {data && data.uploadedCount > 0 ? Math.round((data.verifiedCount / data.uploadedCount) * 100) : 0}%
               </p>
             </div>
           </div>
@@ -122,8 +118,8 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
         <h2 className="text-xl font-semibold mb-4">Tendencia Global de Productividad (Últimos Días)</h2>
         <div className="h-64 flex items-end gap-2 border-b-2 border-gray-200 pb-2 pt-8">
           {data?.productivity.map((item) => {
-            const maxCount = Math.max(...data.productivity.map(p => p.count));
-            const height = `${(item.count / maxCount) * 100}%`;
+            const maxCount = Math.max(...(data?.productivity.map(p => p.folios) || [0]));
+            const height = maxCount === 0 ? '10%' : `${(item.folios / maxCount) * 100}%`;
             return (
               <div key={item.date} className="flex-1 flex flex-col items-center justify-end h-full group relative">
                 <div 
@@ -131,7 +127,7 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
                   style={{ height, minHeight: '10%' }}
                 >
                   <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-sm font-bold text-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {item.count}
+                    {item.folios}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500 mt-2 truncate w-full text-center block" title={item.date}>
@@ -142,44 +138,6 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
           })}
         </div>
         <p className="text-sm text-gray-500 mt-4 text-center">Folios procesados por día</p>
-      </section>
-
-      {/* Invitación (Original) */}
-      <section className="p-6 bg-white rounded shadow-md max-w-lg border border-gray-100">
-        <h2 className="text-xl font-semibold mb-4">Invitar Digitador</h2>
-        <form onSubmit={handleInvite} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email del digitador</label>
-            <input 
-              type="email" 
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="ejemplo@correo.com"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring focus:ring-blue-200"
-              required
-            />
-          </div>
-          
-          <button 
-            type="submit" 
-            disabled={inviteStatus === 'sending'}
-            className="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {inviteStatus === 'sending' ? 'Enviando...' : 'Invitar'}
-          </button>
-        </form>
-        
-        {inviteStatus === 'sent' && (
-          <div className="mt-4 p-3 bg-green-100 text-green-800 rounded-md flex flex-col sm:flex-row items-center justify-between gap-4">
-            <span className="text-sm">Invitación enviada exitosamente.</span>
-            <button 
-              onClick={handleResend}
-              className="text-sm px-3 py-1 bg-white border border-green-300 rounded hover:bg-green-50 whitespace-nowrap"
-            >
-              Reenviar Invitación
-            </button>
-          </div>
-        )}
       </section>
     </div>
   );

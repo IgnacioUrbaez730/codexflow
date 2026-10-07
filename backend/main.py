@@ -667,4 +667,65 @@ async def complete_onboarding(request: CompleteOnboardingRequest, authorization:
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in complete_onboarding: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tenant/metrics")
+async def get_tenant_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
+    try:
+        user_client = auth["user_client"]
+        
+        # Total folios
+        total_res = user_client.table("folios").select("id").eq("tenant_id", tenant_id).execute()
+        total_count = len(total_res.data) if total_res.data else 0
+        
+        # Verified folios
+        verified_res = user_client.table("folios").select("id").eq("tenant_id", tenant_id).eq("status", "completed").execute()
+        verified_count = len(verified_res.data) if verified_res.data else 0
+        
+        # Quota
+        quota_res = supabase.table("tenant_quotas").select("*").eq("tenant_id", tenant_id).execute()
+        if quota_res.data:
+            quota_data = quota_res.data[0]
+            used_this_week = quota_data.get("used_this_week", 0)
+            weekly_limit = quota_data.get("weekly_limit", 1000)
+        else:
+            used_this_week = 0
+            weekly_limit = 1000
+            
+        # Productivity (last 7 days by created_at)
+        productivity = []
+        seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
+        
+        folios_res = user_client.table("folios").select("created_at").eq("tenant_id", tenant_id).gte("created_at", seven_days_ago).execute()
+        
+        date_counts = {}
+        for i in range(7):
+            d = (datetime.now() - timedelta(days=6-i)).strftime("%Y-%m-%d")
+            date_counts[d] = 0
+            
+        if folios_res.data:
+            for f in folios_res.data:
+                ca = f.get("created_at")
+                if ca:
+                    d_str = ca.split("T")[0]
+                    if d_str in date_counts:
+                        date_counts[d_str] += 1
+                        
+        for d, count in date_counts.items():
+            productivity.append({"date": d, "folios": count})
+            
+        return {
+            "productivity": productivity,
+            "uploadedCount": total_count,
+            "verifiedCount": verified_count,
+            "quota": {
+                "used_this_week": used_this_week,
+                "weekly_limit": weekly_limit
+            }
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in tenant metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

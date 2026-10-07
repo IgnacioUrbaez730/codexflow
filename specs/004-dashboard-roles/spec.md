@@ -26,3 +26,10 @@ Proveer a las organizaciones herramientas de gestión de operaciones, control de
 
 ## 3. Requisitos No Funcionales (RNF)
 - **Seguridad:** Supabase RLS garantizará que la API Key solo devuelva folios del `tenant_id` asociado.
+
+
+## Enmienda Loop 1 — UI/UX del Dashboard y Métricas Reales
+Se requiere mejorar la experiencia de usuario y conectar el Dashboard con datos reales:
+1. **Sidebar:** Añadir un Sidebar de navegación en el layout base, adaptativo según el rol del usuario (Administrador, Archivista, Digitador).
+2. **Métricas Reales:** Conectar las gráficas y KPIs del Dashboard al endpoint real del backend en lugar de usar datos simulados (mocks).
+3. **Gestión de Usuarios:** Mover el formulario de invitación de usuarios (digitadores) fuera del Dashboard hacia una nueva sección dedicada en ajustes de equipo (`/settings/users/page.tsx`).

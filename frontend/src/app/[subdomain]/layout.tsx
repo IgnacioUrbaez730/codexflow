@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "../../lib/supabase";
+import Sidebar from "../../components/Sidebar";
 
 export default function SubdomainLayout({
   children,
@@ -14,6 +15,7 @@ export default function SubdomainLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     async function checkAccess() {
@@ -21,7 +23,7 @@ export default function SubdomainLayout({
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         
-        let role = localStorage.getItem("mock_role"); // fallback for dev
+        let currentRole = localStorage.getItem("mock_role"); // fallback for dev
         
         if (session?.user) {
           const { data: profile } = await supabase
@@ -31,13 +33,15 @@ export default function SubdomainLayout({
             .single();
             
           if (profile) {
-            role = profile.role;
-            localStorage.setItem("mock_role", role);
+            currentRole = profile.role;
+            localStorage.setItem("mock_role", currentRole);
           }
         }
 
+        setRole(currentRole);
+
         // Si es digitizer, forzar a /visor
-        if (role === "digitizer") {
+        if (currentRole === "digitizer") {
           if (!pathname.includes(`/${params.subdomain}/visor`)) {
             router.replace(`/${params.subdomain}/visor`);
             return;
@@ -57,9 +61,14 @@ export default function SubdomainLayout({
     return <div className="min-h-screen flex items-center justify-center">Verificando accesos...</div>;
   }
 
+  const isDigitizer = role === "digitizer";
+
   return (
-    <div className="subdomain-layout">
-      {children}
+    <div className="subdomain-layout flex min-h-screen bg-gray-50">
+      {!isDigitizer && role && <Sidebar subdomain={params.subdomain} role={role} />}
+      <main className="flex-1 overflow-auto">
+        {children}
+      </main>
     </div>
   );
 }
