@@ -24,7 +24,6 @@ export default function WelcomePage() {
   );
 
   useEffect(() => {
-    // Fetch user profile to get tenant_name
     const fetchProfile = async () => {
       try {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -36,10 +35,9 @@ export default function WelcomePage() {
 
         setSession(currentSession);
 
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
-        const res = await fetch(${backendUrl}/api/auth/me, {
+        const res = await fetch("/api/auth/me", {
           headers: {
-            "Authorization": Bearer 
+            "Authorization": \Bearer \\
           }
         });
         
@@ -80,12 +78,11 @@ export default function WelcomePage() {
     setLoading(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
-      const res = await fetch(${backendUrl}/api/auth/complete-onboarding, {
+      const res = await fetch("/api/auth/complete-onboarding", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": Bearer 
+          "Authorization": \Bearer \\
         },
         body: JSON.stringify({
           first_name: formData.firstName,
@@ -100,8 +97,7 @@ export default function WelcomePage() {
         throw new Error(errData.detail || "Error al completar el registro.");
       }
 
-      // Success
-      router.push(//dashboard);
+      router.push(\/\/dashboard\);
 
     } catch (err: any) {
       setError(err.message);

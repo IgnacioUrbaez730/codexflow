@@ -142,7 +142,7 @@ async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks
         
         return {"status": "success", "message": f"Batch {request.batch_id} ingestion task dispatched."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def health_check():
@@ -162,7 +162,7 @@ async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Dep
         user_client.table("training_data").insert(data).execute()
         return {"status": "success", "message": "Feedback registered successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/users/invite")
 async def invite_user(request: InviteRequest):
@@ -181,7 +181,7 @@ async def invite_user(request: InviteRequest):
         
         return {"status": "success", "message": f"User {request.email} invited successfully."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class KeyRegenerateRequest(BaseModel):
     tenant_id: str
@@ -222,7 +222,7 @@ async def regenerate_api_key(request: KeyRegenerateRequest, authorization: str =
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/export")
 async def export_data(batch_id: Optional[str] = None, x_api_key: str = Header(None)):
@@ -259,7 +259,7 @@ async def export_data(batch_id: Optional[str] = None, x_api_key: str = Header(No
     try:
         folios_res = query.execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
     
     results = []
     if folios_res.data:
@@ -329,7 +329,7 @@ async def export_data_csv(batch_id: Optional[str] = None, x_api_key: str = Heade
     try:
         folios_res = query.execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
         
     base_columns = ["id", "batch_id", "status", "created_at", "verified_at"]
     all_columns = base_columns + template_fields
@@ -389,7 +389,7 @@ async def get_all_tenants(auth: Dict[str, Any] = Depends(get_superadmin_context)
         
         return {"status": "success", "data": tenants}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class TenantStatusUpdateRequest(BaseModel):
     is_active: bool
@@ -404,7 +404,7 @@ async def update_tenant_status(tenant_id: str, request: TenantStatusUpdateReques
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class ResendInviteRequest(BaseModel):
     email: str
@@ -415,7 +415,7 @@ async def resend_tenant_invite(tenant_id: str, request: ResendInviteRequest, aut
         res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
         return {"status": "success", "message": "Invitación reenviada exitosamente"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class TenantCreateRequest(BaseModel):
     name: str
@@ -472,7 +472,7 @@ async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Dep
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class QuotaUpdateRequest(BaseModel):
     weekly_limit: int
@@ -487,7 +487,7 @@ async def update_tenant_quota(tenant_id: str, request: QuotaUpdateRequest, auth:
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/superadmin/orphans")
 async def get_orphans(auth: Dict[str, Any] = Depends(get_superadmin_context)):
@@ -510,7 +510,7 @@ async def get_orphans(auth: Dict[str, Any] = Depends(get_superadmin_context)):
                 })
         return {"status": "success", "data": orphans}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class ResolveOrphanRequest(BaseModel):
     action: str
@@ -553,7 +553,7 @@ async def resolve_orphan(user_id: str, request: ResolveOrphanRequest, auth: Dict
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/auth/me")
 async def auth_me(authorization: str = Header(None)):
@@ -611,7 +611,7 @@ async def auth_me(authorization: str = Header(None)):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 
 class CompleteOnboardingRequest(BaseModel):
@@ -663,4 +663,4 @@ async def complete_onboarding(request: CompleteOnboardingRequest, authorization:
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))

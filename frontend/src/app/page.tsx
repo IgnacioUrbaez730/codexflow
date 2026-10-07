@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,9 +7,11 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirigir inmediatamente a /login preservando el hash del Enlace Magico
-    router.push('/login' + window.location.hash);
-  }, [router]);
+    // Redirigir inmediatamente a /login con recarga dura para que Supabase procese el hash del Enlace Magico
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login' + window.location.hash);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">

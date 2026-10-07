@@ -22,8 +22,7 @@ export default function LoginPage() {
     const checkAndRedirect = async (session: any) => {
       if (!session || !mounted) return;
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
-        const res = await fetch(`${backendUrl}/api/auth/me`, {
+        const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${session.access_token}` }
         });
         if (res.ok) {
@@ -75,8 +74,7 @@ export default function LoginPage() {
 
       if (data.user) {
         try {
-          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
-          const res = await fetch(`${backendUrl}/api/auth/me`, {
+          const res = await fetch('/api/auth/me', {
             headers: { 'Authorization': `Bearer ${data.session?.access_token}` }
           });
           if (res.ok) {
