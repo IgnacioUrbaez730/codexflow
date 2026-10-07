@@ -16,8 +16,11 @@ export default function DashboardPage({ params }: { params: { subdomain: string 
     const fetchData = async () => {
       setLoading(true);
       try {
-        const { createClient } = await import('../../lib/supabase');
-        const supabase = createClient();
+        const { createBrowserClient } = await import('@supabase/ssr');
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        );
         const { data: { session } } = await supabase.auth.getSession();
         
         const headers: Record<string, string> = {};
