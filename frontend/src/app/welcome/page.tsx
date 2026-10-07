@@ -1,11 +1,13 @@
-"use client";
+﻿'use client';
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function WelcomePage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState<string>("tu Organización");
+  const [session, setSession] = useState<any>(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -16,19 +18,28 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  );
+
   useEffect(() => {
     // Fetch user profile to get tenant_name
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem("codex_token");
-        if (!token) {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (!currentSession) {
           router.push("/login");
           return;
         }
 
-        const res = await fetch("/api/auth/me", {
+        setSession(currentSession);
+
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
+        const res = await fetch(${backendUrl}/api/auth/me, {
           headers: {
-            "Authorization": `Bearer ${token}`
+            "Authorization": Bearer 
           }
         });
         
@@ -43,7 +54,7 @@ export default function WelcomePage() {
       }
     };
     fetchProfile();
-  }, [router]);
+  }, [router, supabase]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -69,12 +80,12 @@ export default function WelcomePage() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("codex_token");
-      const res = await fetch("/api/auth/complete-onboarding", {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
+      const res = await fetch(${backendUrl}/api/auth/complete-onboarding, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Authorization": Bearer 
         },
         body: JSON.stringify({
           first_name: formData.firstName,
@@ -90,7 +101,7 @@ export default function WelcomePage() {
       }
 
       // Success
-      router.push(`/${tenantName}/dashboard`);
+      router.push(//dashboard);
 
     } catch (err: any) {
       setError(err.message);
