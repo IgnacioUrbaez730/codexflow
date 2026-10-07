@@ -570,13 +570,15 @@ async def auth_me(authorization: str = Header(None)):
         user_id = res.user.id
         email = res.user.email
         
-        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(name, is_active)").eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("role, tenant_id, has_completed_onboarding, tenants(name, is_active)").eq("user_id", user_id).execute()
         if not profile_res.data:
             role = "pending"
             tenant_name = None
+            has_completed = False
         else:
             profile = profile_res.data[0]
             role = profile.get("role")
+            has_completed = profile.get("has_completed_onboarding", False)
             tenants = profile.get("tenants")
             if tenants and tenants.get("is_active") is False:
                 raise HTTPException(status_code=403, detail="Organización desactivada")
@@ -600,6 +602,8 @@ async def auth_me(authorization: str = Header(None)):
             return {"role": "superadmin", "redirect_url": "/superadmin"}
             
         if role in ["admin", "digitador", "archivist"] and tenant_name:
+            if not has_completed:
+                return {"role": role, "tenant_name": tenant_name, "redirect_url": "/welcome"}
             return {"role": role, "redirect_url": f"/{tenant_name}/dashboard"}
             
         return {"role": role, "redirect_url": "/pending"}
@@ -609,3 +613,54 @@ async def auth_me(authorization: str = Header(None)):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class CompleteOnboardingRequest(BaseModel):
+    first_name: str
+    last_name: str
+    job_title: Optional[str] = None
+    password: str
+
+@app.post("/api/auth/complete-onboarding")
+async def complete_onboarding(request: CompleteOnboardingRequest, authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+        
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    try:
+        res = supabase.auth.get_user(token)
+        if not res or not res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        user_id = res.user.id
+        
+        # Step 1: Update user_profiles
+        profile_update = {
+            "first_name": request.first_name,
+            "last_name": request.last_name,
+            "job_title": request.job_title,
+            "has_completed_onboarding": True
+        }
+        
+        update_res = supabase.table("user_profiles").update(profile_update).eq("user_id", user_id).execute()
+        
+        if not update_res.data:
+            raise HTTPException(status_code=404, detail="User profile not found")
+            
+        # Step 2: Update password via Supabase Auth Admin API
+        try:
+            supabase.auth.admin.update_user_by_id(user_id, {"password": request.password})
+        except Exception as auth_e:
+            # Revert profile update
+            revert_update = {
+                "has_completed_onboarding": False
+            }
+            supabase.table("user_profiles").update(revert_update).eq("user_id", user_id).execute()
+            raise HTTPException(status_code=500, detail="Failed to update password. Onboarding reverted.")
+            
+        return {"status": "success", "message": "Onboarding completed successfully"}
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
