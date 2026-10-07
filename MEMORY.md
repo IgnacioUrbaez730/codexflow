@@ -15,8 +15,8 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Control de RAM y Cuellos de Botella:** La arquitectura se refactorizó para correr con un Semáforo de concurrencia y un Streamer de CSV. Así aseguramos que el OCR y la descarga masiva no exploten el servidor gratuito de 512MB de Render.
 
 ## Próximos pasos (Pendientes)
-- **FASE DE DESPLIEGUE A PRODUCCIÓN.**
-- Tareas: Configurar cuentas reales de Supabase (Prod), Cloudflare R2 (Storage), y desplegar el Frontend (Vercel) y Backend (Render/Railway).
+- **FASE DE CREACIÓN B2B (Spec 007):**
+- Tareas: Crear el plan técnico para `specs/007-b2b-tenant-management` (Creación manual de ONGs por el Superadmin, Suspensión, Soporte y Reenvío de Invitaciones).
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 

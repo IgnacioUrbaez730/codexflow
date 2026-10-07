@@ -9,6 +9,9 @@ interface Tenant {
   id: string;
   name: string;
   created_at: string;
+  is_active: boolean;
+  admin_email: string | null;
+  last_sign_in_at: string | null;
   tenant_quotas: {
     weekly_limit: number;
     used_this_week: number;
@@ -116,6 +119,44 @@ export default function SuperadminDashboard() {
     }
   };
 
+  const toggleTenantStatus = async (tenantId: string, currentStatus: boolean) => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`/api/superadmin/tenants/${tenantId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ is_active: !currentStatus })
+      });
+      if (res.ok) {
+        await fetchTenants();
+      }
+    } catch (error) {
+      console.error("Error toggling status:", error);
+    }
+  };
+
+  const resendInvite = async (tenantId: string, email: string) => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`/api/superadmin/tenants/${tenantId}/resend-invite`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ email })
+      });
+      if (res.ok) {
+        alert("Invitación reenviada exitosamente a " + email);
+      }
+    } catch (error) {
+      console.error("Error resending invite:", error);
+    }
+  };
+
   const handleResolve = async (userId: string, action: "assign" | "reject" | "create_tenant") => {
     try {
       const token = await getAuthToken();
@@ -152,7 +193,7 @@ export default function SuperadminDashboard() {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Panel Global — Superadmin</h1>
@@ -160,7 +201,7 @@ export default function SuperadminDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/superadmin/new"
+            href="/superadmin/tenants/new"
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium text-sm transition"
           >
             + Nueva Organización
@@ -248,7 +289,6 @@ export default function SuperadminDashboard() {
                               setResolvingUserId(null);
                               setNewTenantName("");
                             }}
-
                             className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-xs"
                           >
                             Cancelar
@@ -291,6 +331,7 @@ export default function SuperadminDashboard() {
             <thead className="bg-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Organización (Tenant)</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fecha Alta</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Límite Semanal</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Consumo Actual</th>
@@ -301,22 +342,47 @@ export default function SuperadminDashboard() {
               {tenants.map(tenant => (
                 <tr key={tenant.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{tenant.name}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${tenant.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {tenant.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{new Date(tenant.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{tenant.tenant_quotas?.weekly_limit || 0}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{tenant.tenant_quotas?.used_this_week || 0}</td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3 text-sm flex gap-2 flex-wrap">
                     <button
                       onClick={() => handleEditClick(tenant)}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition"
                     >
                       Editar Cuota
                     </button>
+                    <button
+                      onClick={() => toggleTenantStatus(tenant.id, tenant.is_active)}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs transition"
+                    >
+                      {tenant.is_active ? 'Desactivar' : 'Activar'}
+                    </button>
+                    {!tenant.last_sign_in_at && tenant.admin_email && (
+                      <button
+                        onClick={() => resendInvite(tenant.id, tenant.admin_email as string)}
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-xs transition"
+                      >
+                        Reenviar Invitación
+                      </button>
+                    )}
+                    <Link
+                      href={`/${tenant.name}/dashboard?impersonate=${tenant.id}`}
+                      className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs transition"
+                    >
+                      Ver Dashboard
+                    </Link>
                   </td>
                 </tr>
               ))}
               {tenants.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     No hay organizaciones registradas todavía. Crea la primera con el botón de arriba.
                   </td>
                 </tr>

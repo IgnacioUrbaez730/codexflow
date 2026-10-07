@@ -25,7 +25,7 @@ class FeedbackRequest(BaseModel):
     predicted_value: str
     actual_value: str
 
-async def get_auth_context(authorization: str = Header(...)) -> Dict[str, Any]:
+async def get_auth_context(authorization: str = Header(...), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
     token = authorization.split(" ")[1] if " " in authorization else authorization
@@ -36,11 +36,22 @@ async def get_auth_context(authorization: str = Header(...)) -> Dict[str, Any]:
             raise HTTPException(status_code=401, detail="Invalid token")
             
         user_id = res.user.id
-        profile_res = supabase.table("user_profiles").select("tenant_id").eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("tenant_id, role, tenants(is_active)").eq("user_id", user_id).execute()
         if not profile_res.data:
             raise HTTPException(status_code=403, detail="User profile not found")
             
-        tenant_id = profile_res.data[0]["tenant_id"]
+        profile = profile_res.data[0]
+        role = profile.get("role")
+        tenant_id = profile.get("tenant_id")
+        tenants = profile.get("tenants")
+        
+        if tenants and tenants.get("is_active") is False:
+            raise HTTPException(status_code=403, detail="Organización desactivada")
+        
+        if role == "superadmin":
+            if x_tenant_id:
+                tenant_id = x_tenant_id
+            return {"tenant_id": tenant_id, "user_client": supabase}
         
         # Create user-scoped client
         options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
@@ -358,8 +369,51 @@ async def export_data_csv(batch_id: Optional[str] = None, x_api_key: str = Heade
 async def get_all_tenants(auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
         # Join tenants and tenant_quotas
-        res = supabase.table("tenants").select("id, name, created_at, tenant_quotas(weekly_limit, used_this_week)").execute()
-        return {"status": "success", "data": res.data}
+        res = supabase.table("tenants").select("id, name, created_at, is_active, country, contact_name, tax_id, phone, tenant_quotas(weekly_limit, used_this_week)").execute()
+        tenants = res.data or []
+        
+        profiles = supabase.table("user_profiles").select("user_id, tenant_id").eq("role", "admin").execute()
+        tenant_admins = {p["tenant_id"]: p["user_id"] for p in profiles.data} if profiles.data else {}
+        
+        for t in tenants:
+            t["admin_email"] = None
+            t["last_sign_in_at"] = None
+            admin_id = tenant_admins.get(t["id"])
+            if admin_id:
+                try:
+                    admin_user = supabase.auth.admin.get_user_by_id(admin_id)
+                    t["admin_email"] = admin_user.user.email
+                    t["last_sign_in_at"] = admin_user.user.last_sign_in_at
+                except:
+                    pass
+        
+        return {"status": "success", "data": tenants}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class TenantStatusUpdateRequest(BaseModel):
+    is_active: bool
+
+@app.patch("/api/superadmin/tenants/{tenant_id}/status")
+async def update_tenant_status(tenant_id: str, request: TenantStatusUpdateRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        res = supabase.table("tenants").update({"is_active": request.is_active}).eq("id", tenant_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ResendInviteRequest(BaseModel):
+    email: str
+
+@app.post("/api/superadmin/tenants/{tenant_id}/resend-invite")
+async def resend_tenant_invite(tenant_id: str, request: ResendInviteRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    try:
+        res = supabase.auth.admin.invite_user_by_email(request.email)
+        return {"status": "success", "message": "Invitación reenviada exitosamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -367,12 +421,33 @@ class TenantCreateRequest(BaseModel):
     name: str
     weekly_limit: int
     admin_email: str
+    country: Optional[str] = None
+    contact_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    phone: Optional[str] = None
 
 @app.post("/api/superadmin/tenants")
 async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
+        # Invite admin user via Supabase Auth Admin API
+        # If user exists, this usually just returns the user or re-sends invite
+        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email)
+        user_id = invite_res.user.id
+        
+        # Check if user already belongs to another tenant
+        profile_res = supabase.table("user_profiles").select("tenant_id").eq("user_id", user_id).execute()
+        if profile_res.data and profile_res.data[0].get("tenant_id"):
+            raise HTTPException(status_code=400, detail="El usuario ya pertenece a otra organización")
+
         # Insert new tenant
-        tenant_res = supabase.table("tenants").insert({"name": request.name}).execute()
+        tenant_data = {
+            "name": request.name,
+            "country": request.country,
+            "contact_name": request.contact_name,
+            "tax_id": request.tax_id,
+            "phone": request.phone
+        }
+        tenant_res = supabase.table("tenants").insert(tenant_data).execute()
         if not tenant_res.data:
             raise HTTPException(status_code=500, detail="Failed to create tenant")
         tenant_id = tenant_res.data[0]["id"]
@@ -380,10 +455,6 @@ async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Dep
         # Insert quota
         quota_data = {"tenant_id": tenant_id, "weekly_limit": request.weekly_limit}
         supabase.table("tenant_quotas").insert(quota_data).execute()
-        
-        # Invite admin user via Supabase Auth Admin API
-        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email)
-        user_id = invite_res.user.id
         
         # Insert/Update user profile
         profile_data = {
@@ -499,7 +570,7 @@ async def auth_me(authorization: str = Header(None)):
         user_id = res.user.id
         email = res.user.email
         
-        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(name)").eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("role, tenant_id, tenants(name, is_active)").eq("user_id", user_id).execute()
         if not profile_res.data:
             role = "pending"
             tenant_name = None
@@ -507,6 +578,8 @@ async def auth_me(authorization: str = Header(None)):
             profile = profile_res.data[0]
             role = profile.get("role")
             tenants = profile.get("tenants")
+            if tenants and tenants.get("is_active") is False:
+                raise HTTPException(status_code=403, detail="Organización desactivada")
             tenant_name = tenants.get("name") if tenants else None
             
         if role == "pending":
