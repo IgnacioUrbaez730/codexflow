@@ -169,7 +169,7 @@ async def invite_user(request: InviteRequest):
     if request.role not in ["admin", "archivist", "digitizer"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
         user_id = res.user.id
         
         profile_data = {
@@ -412,7 +412,7 @@ class ResendInviteRequest(BaseModel):
 @app.post("/api/superadmin/tenants/{tenant_id}/resend-invite")
 async def resend_tenant_invite(tenant_id: str, request: ResendInviteRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
         return {"status": "success", "message": "Invitación reenviada exitosamente"}
     except Exception as e:
         print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
@@ -431,7 +431,7 @@ async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Dep
     try:
         # Invite admin user via Supabase Auth Admin API
         # If user exists, this usually just returns the user or re-sends invite
-        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
+        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
         user_id = invite_res.user.id
         
         # Check if user already belongs to another tenant
@@ -601,10 +601,10 @@ async def auth_me(authorization: str = Header(None)):
         if role == "superadmin":
             return {"role": "superadmin", "redirect_url": "/superadmin"}
             
-        if role in ["admin", "digitador", "archivist"] and tenant_name:
+        if role in ["admin", "digitizer", "archivist"] and tenant_name:
             if not has_completed:
-                return {"role": role, "tenant_name": tenant_name, "redirect_url": "/welcome"}
-            return {"role": role, "redirect_url": f"/{tenant_name}/dashboard"}
+                return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": "/welcome"}
+            return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/dashboard"}
             
         return {"role": role, "redirect_url": "/pending"}
         
@@ -633,6 +633,10 @@ async def complete_onboarding(request: CompleteOnboardingRequest, authorization:
             raise HTTPException(status_code=401, detail="Invalid token")
             
         user_id = res.user.id
+        
+        profile_res = supabase.table("user_profiles").select("has_completed_onboarding").eq("user_id", user_id).execute()
+        if profile_res.data and profile_res.data[0].get("has_completed_onboarding"):
+            raise HTTPException(status_code=409, detail="User has already completed onboarding")
         
         # Step 1: Update user_profiles
         profile_update = {

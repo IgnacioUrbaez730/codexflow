@@ -1,13 +1,14 @@
-﻿'use client';
+'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from '@supabase/ssr';
 
-export default function WelcomePage() {
+function WelcomePageContent() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState<string>("tu Organización");
   const [session, setSession] = useState<any>(null);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -16,7 +17,8 @@ export default function WelcomePage() {
     confirmPassword: ""
   });
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -24,35 +26,105 @@ export default function WelcomePage() {
   );
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const initialize = async () => {
       try {
+        setLoading(true);
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        const type = params.get('type');
+        const errorCode = params.get('error_code');
+        const errorDescription = params.get('error_description');
+
+        if (errorCode) {
+          setError(`Error en la invitación: ${errorDescription || errorCode}`);
+          setLoading(false);
+          return;
+        }
+
+        if (accessToken && refreshToken) {
+          if (type !== 'invite') {
+            setError("El enlace no es una invitación válida.");
+            setLoading(false);
+            return;
+          }
+          await supabase.auth.signOut();
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          
+          if (sessionError) {
+            setError("Error al establecer la sesión: " + sessionError.message);
+            setLoading(false);
+            return;
+          }
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         
         if (!currentSession) {
-          router.push("/login");
+          setError("No se encontró una sesión válida. Por favor, usa el enlace de tu correo.");
+          setLoading(false);
           return;
         }
 
         setSession(currentSession);
 
-        const res = await fetch("/api/auth/me", {
-          headers: {
-            "Authorization": \Bearer \\
+        try {
+          const res = await fetch("/api/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${currentSession.access_token}`
+            }
+          });
+          
+          if (!res.ok) {
+            if (res.status === 403) {
+              setError("Acceso denegado. Tu cuenta puede estar desactivada.");
+            } else {
+              setError("Error al obtener información del usuario.");
+            }
+            setLoading(false);
+            return;
           }
-        });
-        
-        if (res.ok) {
+
           const data = await res.json();
-          if (data.tenant_name) {
-            setTenantName(data.tenant_name);
+          
+          if (data.role === 'pending' || data.role === 'rejected') {
+            setError("Tu cuenta no tiene los permisos necesarios.");
+            setLoading(false);
+            return;
           }
+          
+          if (!data.tenant_name) {
+            setError("No se pudo identificar la organización a la que perteneces.");
+            setLoading(false);
+            return;
+          }
+
+          setTenantName(data.tenant_name);
+          if (data.has_completed_onboarding) {
+            setHasCompletedOnboarding(true);
+          }
+        } catch (fetchErr) {
+          setError("Error de red: No se pudo conectar con el servidor.");
+          setLoading(false);
+          return;
         }
-      } catch (err) {
-        console.error("Error fetching profile:", err);
+
+      } catch (err: any) {
+        console.error("Error en inicialización:", err);
+        setError(err.message || "Error desconocido");
+      } finally {
+        setLoading(false);
       }
     };
-    fetchProfile();
-  }, [router, supabase]);
+    
+    initialize();
+  }, [supabase]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -75,14 +147,14 @@ export default function WelcomePage() {
       return;
     }
 
-    setLoading(true);
+    setSaving(true);
 
     try {
       const res = await fetch("/api/auth/complete-onboarding", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": \Bearer \\
+          "Authorization": `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           first_name: formData.firstName,
@@ -97,32 +169,63 @@ export default function WelcomePage() {
         throw new Error(errData.detail || "Error al completar el registro.");
       }
 
-      router.push(\/\/dashboard\);
+      router.push(`/${encodeURIComponent(tenantName)}/dashboard`);
 
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <p>Cargando información...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
+          <h2 className="text-xl font-bold text-red-600 mb-4">Error de Acceso</h2>
+          <p className="text-gray-700">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasCompletedOnboarding) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Cuenta ya configurada</h2>
+          <p className="text-gray-600 mb-6">Tu cuenta ya ha completado el proceso de configuración inicial.</p>
+          <button
+            onClick={() => router.push(`/${encodeURIComponent(tenantName)}/dashboard`)}
+            className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Ir a mi Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Bienvenido a {tenantName}. Completa tu cuenta
+            Bienvenido a {tenantName}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Completa tu perfil para comenzar
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded relative">
-              {error}
-            </div>
-          )}
           <div className="rounded-md shadow-sm -space-y-px">
             <div className="mb-4">
               <label htmlFor="firstName" className="sr-only">Nombre</label>
@@ -151,7 +254,7 @@ export default function WelcomePage() {
               />
             </div>
             <div className="mb-4">
-              <label htmlFor="jobTitle" className="sr-only">Cargo</label>
+              <label htmlFor="jobTitle" className="sr-only">Cargo (Opcional)</label>
               <input
                 id="jobTitle"
                 name="jobTitle"
@@ -193,14 +296,22 @@ export default function WelcomePage() {
           <div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={saving}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
             >
-              {loading ? "Guardando..." : "Guardar y Entrar"}
+              {saving ? "Guardando..." : "Guardar y Entrar"}
             </button>
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+export default function WelcomePage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <WelcomePageContent />
+    </Suspense>
   );
 }
