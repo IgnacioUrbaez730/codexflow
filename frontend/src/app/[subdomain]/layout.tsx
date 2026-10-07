@@ -23,28 +23,28 @@ export default function SubdomainLayout({
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         
-        let currentRole = localStorage.getItem("mock_role"); // fallback for dev
-        
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .single();
-            
-          if (profile) {
-            currentRole = profile.role;
-            localStorage.setItem("mock_role", currentRole);
-          }
+        if (!session?.user) {
+          router.replace("/login");
+          return;
         }
 
-        setRole(currentRole);
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://codexflow-backend.onrender.com';
+        const res = await fetch(`${backendUrl}/api/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        });
 
-        // Si es digitizer, forzar a /visor
-        if (currentRole === "digitizer") {
-          if (!pathname.includes(`/${params.subdomain}/visor`)) {
-            router.replace(`/${params.subdomain}/visor`);
-            return;
+        if (res.ok) {
+          const data = await res.json();
+          setRole(data.role);
+
+          // Si es digitizer, forzar a /visor
+          if (data.role === "digitizer") {
+            if (!pathname.includes(`/${params.subdomain}/visor`)) {
+              router.replace(`/${params.subdomain}/visor`);
+              return;
+            }
           }
         }
       } catch (err) {
