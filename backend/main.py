@@ -169,7 +169,7 @@ async def invite_user(request: InviteRequest):
     if request.role not in ["admin", "archivist", "digitizer"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email)
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
         user_id = res.user.id
         
         profile_data = {
@@ -412,7 +412,7 @@ class ResendInviteRequest(BaseModel):
 @app.post("/api/superadmin/tenants/{tenant_id}/resend-invite")
 async def resend_tenant_invite(tenant_id: str, request: ResendInviteRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email)
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
         return {"status": "success", "message": "Invitación reenviada exitosamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -431,7 +431,7 @@ async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Dep
     try:
         # Invite admin user via Supabase Auth Admin API
         # If user exists, this usually just returns the user or re-sends invite
-        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email)
+        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email, options={"redirect_to": "https://codexflow-frontend.vercel.app"})
         user_id = invite_res.user.id
         
         # Check if user already belongs to another tenant
