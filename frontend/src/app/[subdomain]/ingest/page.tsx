@@ -12,7 +12,7 @@ export default function IngestHub() {
   const params = useParams();
   const subdomain = params.subdomain as string;
   const [activeTab, setActiveTab] = useState("upload");
-  const [userRole, setUserRole] = useState<string>("archivist");
+  const [userRole, setUserRole] = useState<string>("");
   const [tenantId, setTenantId] = useState<string>("");
   
   // Dummy states for the UI
@@ -26,11 +26,10 @@ export default function IngestHub() {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // mock fetching profile
-        const { data } = await supabase.from("user_profiles").select("role, tenant_id").eq("user_id", session.user.id).single();
-        if (data) {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${session.access_token}` } });
+        if (res.ok) {
+          const data = await res.json();
           setUserRole(data.role);
-          setTenantId(data.tenant_id);
         }
       }
     };
