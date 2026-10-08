@@ -38,3 +38,5 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
 
 10. **Hotfix Huérfanos (RF-6):** Se implementó `/pending` para usuarios sin rol. El superadmin tiene ahora un panel para asignarlos a una ONG, crear una ONG nueva en un paso, o asignarles el rol `rejected`.
 11. **Auto-Reparación Superadmin (RF-1):** Se eliminó el trigger cronológico. Se implementó una "Lista Blanca" mediante Middleware y FastAPI: el correo protegido por `SUPERADMIN_EMAIL` recibe el rol `superadmin` automáticamente al iniciar sesión, evitando bloqueos por usuarios fantasma.
+
+12. **Loop de Mantenimiento de Jerarquías y Roles (Spec 004, Loop 2):** Se resolvió el divorcio de sesiones (CORS local vs cookies) migrando toda la plataforma de forma estricta a `@supabase/ssr`. Se construyó la pantalla de Gestión de Equipo completa con validaciones robustas, filtros y seguridad ("Lazy expulsion", blindaje del último admin). El acceso multi-tenant ahora exige que la seguridad recaiga 100% sobre el `tenant_id` derivado del JWT y no del nombre en la URL (solucionando el bug `undefined`).

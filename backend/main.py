@@ -166,7 +166,53 @@ async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Dep
         user_client.table("training_data").insert(data).execute()
         return {"status": "success", "message": "Feedback registered successfully"}
     except Exception as e:
-        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in register_feedback: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/folios/get_next")
+async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        user_client = auth["user_client"]
+        tenant_id = auth["tenant_id"]
+        res = user_client.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
+        
+        if not res.data or len(res.data) == 0:
+            return {"status": "success", "data": None}
+            
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        print(f"Error in get_next_folio: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+import asyncio
+from datetime import datetime, timezone
+
+async def release_locked_folios():
+    while True:
+        try:
+            # We can run an RPC or query/update
+            # Assuming supabase client has admin privileges
+            admin_client = supabase
+            fifteen_mins_ago = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+            
+            # Find locked folios
+            res = admin_client.table("folios").select("id").eq("status", "in_progress").lt("locked_at", fifteen_mins_ago).execute()
+            
+            if res.data:
+                for f in res.data:
+                    admin_client.table("folios").update({
+                        "status": "pending",
+                        "locked_at": None
+                    }).eq("id", f["id"]).execute()
+                    
+        except Exception as e:
+            print(f"Error releasing locks: {e}")
+            
+        await asyncio.sleep(60) # Run every minute
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(release_locked_folios())
+
 
 class TeamInviteRequest(BaseModel):
     email: str

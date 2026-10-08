@@ -49,3 +49,14 @@ Este módulo representa el núcleo operativo de la plataforma. Permite a los Adm
 - El Admin puede definir un formulario y subir un archivo asignándole dicho formulario.
 - El Worker genera las teselas DZI en R2.
 - El Visor carga en < 1.2s y permite flujo de captura 100% con teclado.
+
+## Enmienda Loop 1 - Hub de Ingesta y Cola Global Segura
+- **Hub de Ingesta**: Mudar las rutas huérfanas `/upload` y `/templates` hacia `/[subdomain]/ingest/page.tsx`. Esta será una sola vista con 3 pestañas: "Subir Lote", "Dudosos", y "Plantillas".
+- **Permisos de Ingesta**: Ocultar la pestaña "Plantillas" si el rol es 'archivist'.
+- **Subida de Lotes**: Obligatorio seleccionar una plantilla antes de subir. Mostrar tabla de "Lotes Recientes" y evitar congelar la pantalla.
+- **Bandeja de Dudosos**: Será una tabla simple dentro del Hub, con un botón "Corregir" que envía a `/[subdomain]/visor?folio_id=XXX`.
+- **Cola Global del Visor**: La ruta `/[subdomain]/visor` sin parámetros servirá el modo automático (Cola Global). Backend entregará folios en orden FIFO (más antiguos primero).
+- **Concurrencia (Bloqueo)**: Backend debe cambiar estado del folio a `in_progress` al entregarlo, con un timeout de 15 minutos (si no se guarda, revierte a `pending`).
+- **Visor Vacío**: Si la cola se vacía, mostrar mensaje "¡Trabajo al día!" con botón al Dashboard.
+- **Ergonomía**: Atajos `Ctrl + Enter` (Guardar) y `Ctrl + Espacio` (Duda) son globales. Se permite guardar con campos vacíos.
+- **Seguridad Dudosos**: Si se accede por `?folio_id=XXX`, el backend y RLS deben validar estrictamente la propiedad del lote si es Archivista.
