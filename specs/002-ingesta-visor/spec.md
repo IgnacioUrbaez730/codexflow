@@ -60,3 +60,12 @@ Este módulo representa el núcleo operativo de la plataforma. Permite a los Adm
 - **Visor Vacío**: Si la cola se vacía, mostrar mensaje "¡Trabajo al día!" con botón al Dashboard.
 - **Ergonomía**: Atajos `Ctrl + Enter` (Guardar) y `Ctrl + Espacio` (Duda) son globales. Se permite guardar con campos vacíos.
 - **Seguridad Dudosos**: Si se accede por `?folio_id=XXX`, el backend y RLS deben validar estrictamente la propiedad del lote si es Archivista.
+
+## Enmienda Loop 2 - Creador Visual de Plantillas y Formularios Dinámicos
+- **Tipos de Campo:** Texto Corto, Texto Largo, Fecha y Dropdown (opciones separadas por comas). Límite de 40 campos. Atributo `is_required` por campo.
+- **Estructura JSON:** El builder genera un array interno: `[{ id: "nombre_completo", label: "Nombre Completo", type: "text", required: true }]`. El ID se genera automático en snake_case.
+- **UI del Constructor:** Pantalla dividida (Split Screen). Izquierda: Tarjetas de configuración con flechas para ordenar (Up/Down) y Papelera para borrar. Derecha: Live Preview de cómo se verá en el visor.
+- **Plantillas Maestras:** Botones rápidos para precargar estructuras base (Bautismo, Defunción).
+- **Protección de Datos:** Las plantillas en uso (relacionadas a lotes) no se pueden editar, solo duplicar.
+- **Renderizado en Visor:** El visor lee la plantilla del lote y renderiza dinámicamente. `Ctrl+Enter` es el único atajo de guardado.
+- **Progreso Parcial:** Marcar dudoso (`Ctrl+Espacio`) guarda el JSON parcial en la BD.

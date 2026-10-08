@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createBrowserClient } from '@supabase/ssr';
 
+import TemplateBuilder from "./TemplateBuilder";
+
 export default function IngestHub() {
   const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
   const router = useRouter();
@@ -11,6 +13,7 @@ export default function IngestHub() {
   const subdomain = params.subdomain as string;
   const [activeTab, setActiveTab] = useState("upload");
   const [userRole, setUserRole] = useState<string>("archivist");
+  const [tenantId, setTenantId] = useState<string>("");
   
   // Dummy states for the UI
   const [templates, setTemplates] = useState<any[]>([]);
@@ -24,9 +27,10 @@ export default function IngestHub() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         // mock fetching profile
-        const { data } = await supabase.from("user_profiles").select("role").eq("user_id", session.user.id).single();
+        const { data } = await supabase.from("user_profiles").select("role, tenant_id").eq("user_id", session.user.id).single();
         if (data) {
           setUserRole(data.role);
+          setTenantId(data.tenant_id);
         }
       }
     };
@@ -160,8 +164,8 @@ export default function IngestHub() {
       {activeTab === 'templates' && userRole !== 'archivist' && (
         <div>
           <h2 className="text-2xl font-semibold mb-4">Gestión de Plantillas</h2>
-          <p className="text-gray-600">Aquí puedes crear y editar plantillas de extracción.</p>
-          {/* Lógica de plantillas migrada */}
+          <p className="text-gray-600 mb-4">Aquí puedes crear y editar plantillas de extracción.</p>
+          <TemplateBuilder tenantId={tenantId} />
         </div>
       )}
     </div>

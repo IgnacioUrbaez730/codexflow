@@ -12,6 +12,7 @@ export default function VisorDual() {
   const folioIdParam = searchParams.get("folio_id");
   
   const [folio, setFolio] = useState<any>(null);
+  const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState<any>({});
 
@@ -19,6 +20,11 @@ export default function VisorDual() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  const fetchTemplate = async (templateId: string) => {
+    const { data } = await supabase.from('templates').select('*').eq('id', templateId).single();
+    if (data) setTemplate(data);
+  };
 
   const fetchNextFolio = useCallback(async () => {
     setLoading(true);
@@ -35,6 +41,11 @@ export default function VisorDual() {
       if (resData.status === "success" && resData.data) {
         setFolio(resData.data);
         setFormData(resData.data.ai_predictions || {});
+        // get template_id from batch
+        const batchRes = await supabase.from('batches').select('template_id').eq('id', resData.data.batch_id).single();
+        if (batchRes.data) {
+          await fetchTemplate(batchRes.data.template_id);
+        }
       } else {
         setFolio(null);
       }
@@ -52,6 +63,10 @@ export default function VisorDual() {
       if (data) {
         setFolio(data);
         setFormData(data.ai_predictions || {});
+        const batchRes = await supabase.from('batches').select('template_id').eq('id', data.batch_id).single();
+        if (batchRes.data) {
+          await fetchTemplate(batchRes.data.template_id);
+        }
       } else {
         setFolio(null);
       }
@@ -73,10 +88,40 @@ export default function VisorDual() {
   const handleSave = useCallback(async () => {
     if (!folio) return;
     
-    // Allow saving empty fields
+    // Validate required fields
+    if (template && template.fields) {
+      for (const field of template.fields) {
+        if (field.required) {
+          const val = formData[field.id];
+          if (val === undefined || val === null || String(val).trim() === "") {
+            alert(`El campo "${field.label}" es obligatorio.`);
+            return;
+          }
+        }
+      }
+    }
+    
     console.log("Saving folio...", formData);
     
-    await supabase.from('folios').update({ status: 'completed', metadata: formData }).eq('id', folio.id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/v1/folios/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token}`
+      },
+      body: JSON.stringify({
+        folio_id: folio.id,
+        metadata: formData,
+        status: "completed"
+      })
+    });
+    
+    const resData = await res.json();
+    if (resData.status !== "success") {
+       alert("Error: " + resData.detail);
+       return;
+    }
     
     if (folioIdParam) {
       // In revision mode, just go back or to ingest hub
@@ -85,20 +130,32 @@ export default function VisorDual() {
       // In queue mode, mark as completed and get next
       fetchNextFolio();
     }
-  }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
+  }, [folio, formData, template, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
 
   const handleMarkRevision = useCallback(async () => {
     if (!folio) return;
     
     console.log("Marking folio as revision...");
-    await supabase.from('folios').update({ status: 'revision' }).eq('id', folio.id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/v1/folios/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session?.access_token}`
+      },
+      body: JSON.stringify({
+        folio_id: folio.id,
+        metadata: formData,
+        status: "revision"
+      })
+    });
     
     if (folioIdParam) {
       router.push(`/${subdomain}/ingest`);
     } else {
       fetchNextFolio();
     }
-  }, [folio, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
+  }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -161,25 +218,47 @@ export default function VisorDual() {
         </div>
         
         <div className="flex-1 overflow-auto p-6 space-y-4">
-          {/* Mock fields */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Campo 1</label>
-            <input 
-              type="text" 
-              className="w-full border rounded p-2"
-              value={formData.field1 || ""}
-              onChange={(e) => setFormData({...formData, field1: e.target.value})}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Campo 2</label>
-            <input 
-              type="text" 
-              className="w-full border rounded p-2"
-              value={formData.field2 || ""}
-              onChange={(e) => setFormData({...formData, field2: e.target.value})}
-            />
-          </div>
+          {template?.fields ? (
+            template.fields.map((f: any) => (
+              <div key={f.id}>
+                <label className="block text-sm font-medium mb-1">
+                  {f.label} {f.required && <span className="text-red-500">*</span>}
+                </label>
+                {f.type === "long_text" ? (
+                  <textarea 
+                    className="w-full border rounded p-2" 
+                    value={formData[f.id] || ""}
+                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
+                  />
+                ) : f.type === "dropdown" ? (
+                  <select 
+                    className="w-full border rounded p-2"
+                    value={formData[f.id] || ""}
+                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {f.options?.map((o: string, j: number) => <option key={j} value={o}>{o}</option>)}
+                  </select>
+                ) : f.type === "date" ? (
+                  <input 
+                    type="date" 
+                    className="w-full border rounded p-2" 
+                    value={formData[f.id] || ""}
+                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
+                  />
+                ) : (
+                  <input 
+                    type="text" 
+                    className="w-full border rounded p-2" 
+                    value={formData[f.id] || ""}
+                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
+                  />
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="text-gray-500 text-sm">Cargando campos...</div>
+          )}
         </div>
         
         <div className="p-4 border-t flex justify-end space-x-4 bg-gray-50">

@@ -866,3 +866,145 @@ async def get_tenant_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
             raise e
         print(f"Error in tenant metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class TemplateCreateRequest(BaseModel):
+    name: str
+    fields: list = []
+
+class TemplateUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    fields: Optional[list] = None
+
+@app.get("/api/v1/templates")
+async def get_templates(auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        user_client = auth["user_client"]
+        res = user_client.table("templates").select("*").eq("tenant_id", auth["tenant_id"]).execute()
+        return {"status": "success", "data": res.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/templates")
+async def create_template(request: TemplateCreateRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        if len(request.fields) > 40:
+            raise HTTPException(status_code=400, detail="Maximum 40 fields allowed")
+        user_client = auth["user_client"]
+        data = {
+            "tenant_id": auth["tenant_id"],
+            "name": request.name,
+            "fields": request.fields
+        }
+        res = user_client.table("templates").insert(data).execute()
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/v1/templates/{template_id}")
+async def update_template(template_id: str, request: TemplateUpdateRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        if request.fields is not None and len(request.fields) > 40:
+            raise HTTPException(status_code=400, detail="Maximum 40 fields allowed")
+        
+        user_client = auth["user_client"]
+        update_data = {}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.fields is not None:
+            update_data["fields"] = request.fields
+            
+        res = user_client.table("templates").update(update_data).eq("id", template_id).eq("tenant_id", auth["tenant_id"]).execute()
+        
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        if "Cannot edit template fields or name because it is already used in batches" in str(e):
+            raise HTTPException(status_code=409, detail="Template is in use and cannot be edited")
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/templates/{template_id}")
+async def delete_template(template_id: str, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        user_client = auth["user_client"]
+        # Check if in use
+        batches_res = user_client.table("batches").select("id").eq("template_id", template_id).execute()
+        if batches_res.data and len(batches_res.data) > 0:
+             raise HTTPException(status_code=409, detail="Template is in use and cannot be deleted")
+        
+        res = user_client.table("templates").delete().eq("id", template_id).eq("tenant_id", auth["tenant_id"]).execute()
+        if not res.data:
+             raise HTTPException(status_code=404, detail="Template not found")
+        return {"status": "success", "message": "Template deleted"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/templates/{template_id}/duplicate")
+async def duplicate_template(template_id: str, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        user_client = auth["user_client"]
+        res = user_client.table("templates").select("*").eq("id", template_id).eq("tenant_id", auth["tenant_id"]).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+            
+        tpl = res.data[0]
+        data = {
+            "tenant_id": auth["tenant_id"],
+            "name": tpl["name"] + " (Copy)",
+            "fields": tpl.get("fields", [])
+        }
+        dup_res = user_client.table("templates").insert(data).execute()
+        return {"status": "success", "data": dup_res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+class FolioSaveRequest(BaseModel):
+    folio_id: str
+    metadata: dict
+    status: str # "completed" or "revision"
+
+@app.post("/api/v1/folios/save")
+async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        user_client = auth["user_client"]
+        
+        # Verify folio exists and get template
+        folio_res = user_client.table("folios").select("*, batches(template_id)").eq("id", request.folio_id).execute()
+        if not folio_res.data:
+            raise HTTPException(status_code=404, detail="Folio not found")
+            
+        folio = folio_res.data[0]
+        template_id = folio["batches"]["template_id"]
+        
+        tpl_res = user_client.table("templates").select("fields").eq("id", template_id).execute()
+        if not tpl_res.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+            
+        fields = tpl_res.data[0].get("fields", [])
+        
+        if request.status == "completed":
+            # Validate required fields
+            for f in fields:
+                if f.get("required"):
+                    val = request.metadata.get(f["id"])
+                    if val is None or str(val).strip() == "":
+                        raise HTTPException(status_code=400, detail=f"Field {f['id']} is required")
+        
+        # Update folio
+        update_data = {
+            "metadata": request.metadata,
+            "status": request.status
+        }
+        if request.status == "completed":
+            update_data["verified_at"] = datetime.now(timezone.utc).isoformat()
+            
+        res = user_client.table("folios").update(update_data).eq("id", request.folio_id).execute()
+        
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
