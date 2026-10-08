@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function IngestHub() {
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '');
   const router = useRouter();
   const params = useParams();
   const subdomain = params.subdomain as string;
