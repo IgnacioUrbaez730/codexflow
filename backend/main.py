@@ -1,6 +1,9 @@
 import os
 import secrets
 import hashlib
+import uuid
+import boto3
+from botocore.client import Config
 from datetime import datetime, timedelta
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
 from pydantic import BaseModel
@@ -12,6 +15,15 @@ from worker import process_file
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://localhost:8000")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "dummy-key")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Setup S3 client for R2
+s3_client = boto3.client(
+    's3',
+    endpoint_url=os.getenv('R2_ENDPOINT_URL'),
+    aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+    config=Config(signature_version='s3v4')
+)
 
 app = FastAPI(title="CodexFlow Ingestion API")
 
@@ -138,7 +150,7 @@ async def process_batch_task(batch_id: str, files: List[str], user_client: Clien
         print(f"Error processing batch {batch_id}: {e}")
         user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
-@app.post("/ingest")
+@app.post("/api/v1/ingest")
 async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         # Confirm upload and dispatch the background task
@@ -147,6 +159,23 @@ async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks
         return {"status": "success", "message": f"Batch {request.batch_id} ingestion task dispatched."}
     except Exception as e:
         print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/upload/url")
+async def get_upload_url(filename: str, content_type: str, auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
+    file_uuid = str(uuid.uuid4())
+    key = f"{tenant_id}/{file_uuid}-{filename}"
+    url = s3_client.generate_presigned_url(
+        'put_object',
+        Params={
+            'Bucket': os.getenv('R2_BUCKET_NAME'),
+            'Key': key,
+            'ContentType': content_type
+        },
+        ExpiresIn=3600
+    )
+    return {"url": url, "key": key}
+
 
 @app.get("/")
 def health_check():

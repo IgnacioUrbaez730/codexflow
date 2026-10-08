@@ -21,6 +21,9 @@ export default function IngestHub() {
   const [recentBatches, setRecentBatches] = useState<any[]>([]);
   const [revisionFolios, setRevisionFolios] = useState<any[]>([]);
 
+  const [files, setFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
     // Fetch user role
     const fetchUser = async () => {
@@ -42,8 +45,65 @@ export default function IngestHub() {
       alert("Please select a template first.");
       return;
     }
-    // Async upload without blocking
-    alert("Upload started asynchronously...");
+    if (files.length === 0) {
+      alert("Please select at least one file.");
+      return;
+    }
+    
+    setIsUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+
+      const batchId = crypto.randomUUID();
+      await supabase.from('batches').insert({
+        id: batchId,
+        template_id: selectedTemplate,
+        status: 'uploading'
+      });
+
+      const uploadedKeys: string[] = [];
+
+      for (const file of files) {
+        const urlRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/upload/url?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!urlRes.ok) throw new Error("Failed to get upload URL");
+        const { url, key } = await urlRes.json();
+
+        const uploadRes = await fetch(url, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type
+          }
+        });
+
+        if (!uploadRes.ok) throw new Error("Failed to upload file to R2");
+        uploadedKeys.push(key);
+      }
+
+      const ingestRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ batch_id: batchId, files: uploadedKeys })
+      });
+
+      if (!ingestRes.ok) throw new Error("Failed to dispatch ingestion");
+      
+      alert("Upload completed successfully!");
+      setFiles([]);
+    } catch (error: any) {
+      alert(`Error during upload: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -92,10 +152,19 @@ export default function IngestHub() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Archivos</label>
-              <input type="file" multiple className="w-full border rounded p-2" />
+              <input 
+                type="file" 
+                multiple 
+                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                className="w-full border rounded p-2" 
+              />
             </div>
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-              Subir Archivos
+            <button 
+              type="submit" 
+              disabled={isUploading}
+              className={`px-4 py-2 rounded text-white ${isUploading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+            >
+              {isUploading ? 'Subiendo...' : 'Subir Archivos'}
             </button>
           </form>
 
