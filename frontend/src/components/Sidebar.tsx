@@ -7,6 +7,7 @@ export default function Sidebar({ subdomain, role }: { subdomain: string, role: 
   const links = [
     { href: `/${subdomain}/dashboard`, label: 'Dashboard' },
     { href: `/${subdomain}/ingest`, label: 'Ingesta/Dudosos' },
+    { href: `/${subdomain}/visor`, label: 'Visor de Indexación' },
     { href: `/${subdomain}/settings/users`, label: 'Equipo' }
   ];
 

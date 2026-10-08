@@ -36,28 +36,32 @@ async def get_auth_context(authorization: str = Header(...), x_tenant_id: Option
             raise HTTPException(status_code=401, detail="Invalid token")
             
         user_id = res.user.id
-        profile_res = supabase.table("user_profiles").select("tenant_id, role, tenants(is_active)").eq("user_id", user_id).execute()
+        profile_res = supabase.table("user_profiles").select("tenant_id, role, is_active, tenants(is_active)").eq("user_id", user_id).execute()
         if not profile_res.data:
             raise HTTPException(status_code=403, detail="User profile not found")
             
         profile = profile_res.data[0]
         role = profile.get("role")
         tenant_id = profile.get("tenant_id")
+        is_active = profile.get("is_active")
         tenants = profile.get("tenants")
         
+        if is_active is False:
+            raise HTTPException(status_code=403, detail="Usuario desactivado")
+            
         if tenants and tenants.get("is_active") is False:
             raise HTTPException(status_code=403, detail="Organización desactivada")
         
         if role == "superadmin":
             if x_tenant_id:
                 tenant_id = x_tenant_id
-            return {"tenant_id": tenant_id, "user_client": supabase}
+            return {"tenant_id": tenant_id, "user_client": supabase, "user_id": user_id, "role": role}
         
         # Create user-scoped client
         options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
         user_client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
         
-        return {"tenant_id": tenant_id, "user_client": user_client}
+        return {"tenant_id": tenant_id, "user_client": user_client, "user_id": user_id, "role": role}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -164,24 +168,111 @@ async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Dep
     except Exception as e:
         print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/users/invite")
-async def invite_user(request: InviteRequest):
+class TeamInviteRequest(BaseModel):
+    email: str
+    role: str
+
+@app.get("/api/v1/team")
+async def get_team(auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
+    try:
+        res = supabase.table("user_profiles").select("user_id, role, is_active, first_name, last_name").eq("tenant_id", tenant_id).execute()
+        profiles = res.data or []
+        
+        team = []
+        for p in profiles:
+            email = "Unknown"
+            try:
+                user_data = supabase.auth.admin.get_user_by_id(p["user_id"])
+                email = user_data.user.email
+            except:
+                pass
+            
+            name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "Unnamed"
+            team.append({
+                "user_id": p["user_id"],
+                "name": name,
+                "email": email,
+                "role": p["role"],
+                "is_active": p.get("is_active", True),
+                "folios_today": 0
+            })
+            
+        return {"status": "success", "data": team}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error in get_team: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/team/invite")
+async def invite_team_member(request: TeamInviteRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
     if request.role not in ["admin", "archivist", "digitizer"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     try:
         res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
         user_id = res.user.id
         
+        profile_res = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
+        if profile_res.data:
+            prof = profile_res.data[0]
+            if prof.get("tenant_id") == tenant_id:
+                if prof.get("is_active") is False:
+                    raise HTTPException(status_code=400, detail="Usuario ya existe, reactívelo manualmente")
+                else:
+                    raise HTTPException(status_code=400, detail="El usuario ya es parte del equipo")
+            elif prof.get("tenant_id") is not None:
+                raise HTTPException(status_code=400, detail="El usuario ya pertenece a otra organización")
+                
         profile_data = {
             "user_id": user_id,
-            "tenant_id": request.tenant_id,
-            "role": request.role
+            "tenant_id": tenant_id,
+            "role": request.role,
+            "is_active": True
         }
         supabase.table("user_profiles").upsert(profile_data).execute()
         
         return {"status": "success", "message": f"User {request.email} invited successfully."}
     except Exception as e:
-        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+        if isinstance(e, HTTPException): raise e
+        print(f"Error in invite_team_member: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+class UpdateTeamMemberRequest(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@app.patch("/api/v1/team/{target_user_id}")
+async def update_team_member(target_user_id: str, request: UpdateTeamMemberRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
+    caller_id = auth["user_id"]
+    caller_role = auth["role"]
+    
+    if caller_role != "admin" and caller_role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only admins can manage team")
+        
+    if caller_id == target_user_id:
+        raise HTTPException(status_code=400, detail="No puedes modificar tu propio rol o estado")
+        
+    try:
+        # Prevent demoting or deactivating the last active admin
+        if request.role is not None and request.role != "admin" or request.is_active is False:
+            admins_res = supabase.table("user_profiles").select("user_id").eq("tenant_id", tenant_id).eq("role", "admin").eq("is_active", True).execute()
+            if admins_res.data and len(admins_res.data) == 1 and admins_res.data[0]["user_id"] == target_user_id:
+                raise HTTPException(status_code=400, detail="No puedes degradar o desactivar al último administrador activo")
+                
+        update_data = {}
+        if request.role is not None:
+            update_data["role"] = request.role
+        if request.is_active is not None:
+            update_data["is_active"] = request.is_active
+            
+        res = supabase.table("user_profiles").update(update_data).eq("user_id", target_user_id).eq("tenant_id", tenant_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado en esta organización")
+            
+        return {"status": "success", "message": "User updated successfully"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error in update_team_member: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class KeyRegenerateRequest(BaseModel):
     tenant_id: str

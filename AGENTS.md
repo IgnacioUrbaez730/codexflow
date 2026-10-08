@@ -11,10 +11,18 @@ Este archivo define el contexto y las reglas para los agentes de Antigravity que
 
 ## Flujo de Trabajo (Spec-Driven Development - SDD)
 1. **Nunca escribas código de implementación sin una especificación (Spec) aprobada.**
-2. El flujo estricto es: `docs/constitution.md` -> `specs/NNN-nombre/spec.md` -> `plan.md` -> `tasks.md` -> Código.
+2. **El flujo estricto de SDD es:**
+   - **Paso 1:** Constitución (una vez por proyecto - `docs/constitution.md`)
+   - **Paso 2:** Especificación (`spec.md`)
+   - **Paso 3:** Clarificación
+   - **Paso 4:** Planificación (`plan.md`)
+   - **Paso 5:** Tareas (`tasks.md`)
+   - **Paso 6:** Implementación
+   - **Paso 7:** Validación
+   - **Loop al Paso 2:** Mantenimiento y correcciones por bugs o lógica.
 3. Utiliza el comando nativo `/plan` de Antigravity para razonar sobre las specs antes de implementarlas.
 4. Si la especificación es ambigua, DEBES detenerte y hacer preguntas al usuario. No alucines soluciones.
-5. **Regla de Oro de QA (Triple Filtro):** Antes de dar una Especificación por aprobada y pasar a `plan.md`, el Coordinador debe someterla a clarificación un **mínimo de 3 veces** buscando huecos, casos límite o contradicciones lógicas. Aunque el Coordinador intente que salga a la primera, el triple filtro es obligatorio.
+5. **Regla de Oro de QA (Paso 3 - Clarificación):** La fase de clarificación de una Spec se debe hacer OBLIGATORIAMENTE en **bloques de 5 preguntas** divididas en **3 rondas** mínimas para buscar huecos, casos límite o contradicciones lógicas. Aunque el Coordinador intente que salga a la primera, el triple filtro es obligatorio.
 
 ### Kit de Automatización SDD (Subagentes Oficiales)
 El flujo anterior se delega en el siguiente "Kit" de subagentes especializados para mantener la velocidad y seguridad:
@@ -30,7 +38,7 @@ El flujo anterior se delega en el siguiente "Kit" de subagentes especializados p
 
 ## Límites para Antigravity
 - ✅ **Siempre:** Lee el archivo `docs/constitution.md` al iniciar una tarea y respeta sus principios de manera estricta. Ninguna decisión técnica o de código puede violar la constitución.
-- ✅ **Siempre:** Al requerir respuestas del usuario para resolver ambigüedades, haz las preguntas estrictamente de **UNA EN UNA**. Prohibido hacer bloques de preguntas para evitar confusión.
+- ✅ **Siempre:** Al requerir respuestas del usuario para resolver **ambigüedades técnicas menores o bloqueos fuera de la Fase de Clarificación**, haz las preguntas estrictamente de **UNA EN UNA**. Prohibido hacer bloques de preguntas para evitar confusión. *(Nota: Esta regla NO aplica al Paso 3 del SDD, el cual requiere bloques de 5 preguntas)*.
 - ✅ **Siempre:** Alerta al usuario y pide credenciales antes de intentar programar accesos a servicios externos (Supabase, Render, Cloudflare R2, GitHub, etc).
 - ✅ **Siempre:** Al finalizar cualquier tarea que modifique el código del Frontend o Backend, TÚ (el Agente) debes ejecutar los comandos `git add`, `git commit` y `git push` utilizando la herramienta `run_command` para desencadenar el despliegue automático, sin pedirle al usuario que lo haga manualmente en su terminal.
 - ✅ **Siempre:** Actualiza el estado del proyecto y divide problemas complejos invocando subagentes si es necesario.
