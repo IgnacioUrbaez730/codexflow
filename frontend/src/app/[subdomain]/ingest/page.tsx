@@ -36,7 +36,14 @@ export default function IngestHub() {
         }
       }
     };
+    const fetchTemplates = async () => {
+      const { data, error } = await supabase.from('templates').select('id, name');
+      if (data && !error) {
+        setTemplates(data);
+      }
+    };
     fetchUser();
+    fetchTemplates();
   }, []);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -56,11 +63,12 @@ export default function IngestHub() {
       const token = session?.access_token || '';
 
       const batchId = crypto.randomUUID();
-      await supabase.from('batches').insert({
+      const { error: batchError } = await supabase.from('batches').insert({
         id: batchId,
         template_id: selectedTemplate,
         status: 'uploading'
       });
+      if (batchError) throw new Error(`Error creando lote: ${batchError.message}`);
 
       const uploadedKeys: string[] = [];
 
@@ -146,8 +154,9 @@ export default function IngestHub() {
                 required
               >
                 <option value="">-- Selecciona una plantilla --</option>
-                <option value="temp1">Plantilla 1</option>
-                <option value="temp2">Plantilla 2</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
               </select>
             </div>
             <div>
