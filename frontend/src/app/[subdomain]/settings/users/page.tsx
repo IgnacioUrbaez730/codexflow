@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { useParams } from 'next/navigation';
 
 interface User {
   user_id: string;
@@ -10,7 +11,8 @@ interface User {
   folios_today: number;
 }
 
-export default function UsersPage({ params }: { params: { subdomain: string } }) {
+export default function UsersPage() {
+  const params = useParams() as { subdomain: string };
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

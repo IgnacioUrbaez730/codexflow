@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 
 interface DashboardData {
   productivity: { date: string; folios: number }[];
@@ -8,7 +9,8 @@ interface DashboardData {
   quota: { used_this_week: number; weekly_limit: number };
 }
 
-export default function DashboardPage({ params }: { params: { subdomain: string } }) {
+export default function DashboardPage() {
+  const params = useParams() as { subdomain: string };
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 

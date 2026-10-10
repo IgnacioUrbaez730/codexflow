@@ -48,3 +48,20 @@ Se requiere mejorar la experiencia de usuario y conectar el Dashboard con datos 
   - No se puede desactivar o degradar al ÚLTIMO Admin activo de la organización.
   - Si se invita a un correo que ya existe pero está inactivo, se arroja un error ("Usuario ya existe, reactívelo manualmente").
   - Si se desactiva a alguien que está trabajando, la expulsión es "perezosa" (falla al intentar pedir el siguiente folio o guardar el actual).
+
+
+## Enmienda Loop 4 — Resolución correcta del subdominio (Next 16)
+
+**Problema:** En Next.js 16, `params` en layouts/pages es una `Promise`. `frontend/src/app/[subdomain]/layout.tsx` (componente `"use client"`) leía `params.subdomain` de forma síncrona, obteniendo `undefined` y generando rutas `/undefined/...` en el Sidebar.
+
+**Requisitos:**
+- **RL4-1:** En componentes cliente, el subdominio DEBE obtenerse con `useParams()` de `next/navigation` (o, alternativamente, `React.use(params)`). Nunca se leerá `params` de forma síncrona.
+- **RL4-2:** En componentes servidor, `params` DEBE resolverse con `await params`.
+- **RL4-3:** Todas las páginas y layouts bajo `frontend/src/app/[subdomain]/**` DEBEN cumplir RL4-1/RL4-2.
+- **RL4-4:** Ninguna ruta generada (Sidebar, enlaces, redirecciones) puede contener el segmento `undefined`.
+- **RL4-5:** Los errores en la consulta de plantillas (`ingest/page.tsx`) DEBEN registrarse con `console.error`.
+
+**Criterios de aceptación:**
+- Navegar por el Sidebar produce rutas `/<subdominio-real>/...`.
+- `npm run build` en `frontend/` finaliza sin errores.
+- Un fallo de consulta de templates aparece en la consola del navegador.

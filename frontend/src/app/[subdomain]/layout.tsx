@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useParams } from "next/navigation";
 import { createBrowserClient } from '@supabase/ssr';
 import Sidebar from "../../components/Sidebar";
 
 export default function SubdomainLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: { subdomain: string };
 }) {
+  const { subdomain } = useParams() as { subdomain: string };
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
@@ -43,8 +42,8 @@ export default function SubdomainLayout({
 
           // Si es digitizer, forzar a /visor
           if (data.role === "digitizer") {
-            if (!pathname.includes(`/${params.subdomain}/visor`)) {
-              router.replace(`/${params.subdomain}/visor`);
+            if (!pathname.includes(`/${subdomain}/visor`)) {
+              router.replace(`/${subdomain}/visor`);
               return;
             }
           }
@@ -60,7 +59,7 @@ export default function SubdomainLayout({
     }
 
     checkAccess();
-  }, [pathname, params.subdomain, router]);
+  }, [pathname, subdomain, router]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Verificando accesos...</div>;
@@ -70,7 +69,7 @@ export default function SubdomainLayout({
 
   return (
     <div className="subdomain-layout flex min-h-screen bg-gray-50">
-      {!isDigitizer && role && <Sidebar subdomain={params.subdomain} role={role} />}
+      {!isDigitizer && role && <Sidebar subdomain={subdomain} role={role} />}
       <main className="flex-1 overflow-auto">
         {children}
       </main>

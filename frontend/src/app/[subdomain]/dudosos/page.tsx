@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDudosos } from "../../../actions/folioActions";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 
-export default function DudososPage({ params }: { params: { subdomain: string } }) {
+export default function DudososPage() {
+  const params = useParams() as { subdomain: string };
   const [folios, setFolios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

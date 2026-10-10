@@ -38,6 +38,7 @@ export default function IngestHub() {
     };
     const fetchTemplates = async () => {
       const { data, error } = await supabase.from('templates').select('id, name');
+      if (error) console.error('Error cargando plantillas:', error);
       if (data && !error) {
         setTemplates(data);
       }
