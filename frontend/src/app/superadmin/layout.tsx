@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import LogoutButton from '@/components/LogoutButton';
+import LogoutButton from '../../components/LogoutButton';
 
 export default async function SuperadminLayout({
   children,
