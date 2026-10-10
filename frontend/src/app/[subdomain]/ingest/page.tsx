@@ -33,8 +33,17 @@ export default function IngestHub() {
         if (res.ok) {
           const data = await res.json();
           setUserRole(data.role);
-          // Store tenant_id so we can use it in upload
-          setTenantId(data.tenant_id);
+        }
+        
+        // Fetch tenant_id directly from DB since /auth/me doesn't include it
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('tenant_id')
+          .eq('user_id', session.user.id)
+          .single();
+          
+        if (profile) {
+          setTenantId(profile.tenant_id);
         }
       }
     };
