@@ -90,7 +90,7 @@ export default function IngestHub() {
       const uploadedKeys: string[] = [];
 
       for (const file of files) {
-        const urlRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/upload/url?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, {
+        const urlRes = await fetch(`/api/v1/upload/url?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -111,7 +111,7 @@ export default function IngestHub() {
         uploadedKeys.push(key);
       }
 
-      const ingestRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/ingest`, {
+      const ingestRes = await fetch(`/api/v1/ingest`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
