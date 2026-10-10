@@ -69,3 +69,7 @@ Este módulo representa el núcleo operativo de la plataforma. Permite a los Adm
 - **Protección de Datos:** Las plantillas en uso (relacionadas a lotes) no se pueden editar, solo duplicar.
 - **Renderizado en Visor:** El visor lee la plantilla del lote y renderiza dinámicamente. `Ctrl+Enter` es el único atajo de guardado.
 - **Progreso Parcial:** Marcar dudoso (`Ctrl+Espacio`) guarda el JSON parcial en la BD.
+
+## Enmienda Loop 3 — Parche RLS de Templates y Batches
+- **Problema Actual:** Las políticas RLS de `templates` y `batches` hacen consultas `SELECT` a la tabla inexistente `public.users` (ya que se mudó a `user_profiles` y helper functions), causando un Error 500 al intentar leer plantillas en el Frontend.
+- **Solución:** Reemplazar las políticas de aislamiento antiguas por nuevas políticas que usen la función segura `public.get_user_tenant()`.

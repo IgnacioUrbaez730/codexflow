@@ -1,0 +1,3 @@
+- [x] Tarea 1: Crear `frontend/src/components/LogoutButton.tsx`. Debe ser `"use client"`, importar `@supabase/ssr`, instanciar el cliente y en el onClick hacer `await supabase.auth.signOut()` y `window.location.href = '/login'`.
+- [x] Tarea 2: Editar `frontend/src/components/Sidebar.tsx` para incluir el `<LogoutButton />` al final. (Agregar "use client" arriba si hace falta).
+- [x] Tarea 3: Editar `frontend/src/app/superadmin/layout.tsx` para incluir el `<LogoutButton />` en el `<header>`.

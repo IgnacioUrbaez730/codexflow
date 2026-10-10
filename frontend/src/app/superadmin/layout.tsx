@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import LogoutButton from '@/components/LogoutButton';
 
 export default async function SuperadminLayout({
   children,
@@ -60,8 +61,9 @@ export default async function SuperadminLayout({
 
   return (
     <div className="superadmin-layout bg-gray-50 min-h-screen text-gray-900">
-      <header className="bg-blue-800 text-white p-4 shadow-md">
+      <header className="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center">
         <h1 className="text-xl font-bold">Panel Global de CodexFlow</h1>
+        <LogoutButton className="bg-red-500 hover:bg-red-600 px-3 py-1 text-sm" />
       </header>
       <main className="p-4">
         {children}

@@ -1,5 +1,8 @@
+"use client";
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import LogoutButton from './LogoutButton';
 
 export default function Sidebar({ subdomain, role }: { subdomain: string, role: string }) {
   const pathname = usePathname();
@@ -28,8 +31,9 @@ export default function Sidebar({ subdomain, role }: { subdomain: string, role: 
           );
         })}
       </nav>
-      <div className="mt-auto pt-4 border-t border-gray-700 text-sm text-gray-400">
-        Rol: {role}
+      <div className="mt-auto pt-4 border-t border-gray-700 text-sm text-gray-400 flex flex-col gap-4">
+        <div>Rol: {role}</div>
+        <LogoutButton className="w-full" />
       </div>
     </div>
   );
