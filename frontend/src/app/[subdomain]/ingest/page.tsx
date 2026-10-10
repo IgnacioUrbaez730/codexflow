@@ -33,6 +33,8 @@ export default function IngestHub() {
         if (res.ok) {
           const data = await res.json();
           setUserRole(data.role);
+          // Store tenant_id so we can use it in upload
+          setTenantId(data.tenant_id);
         }
       }
     };
@@ -62,12 +64,17 @@ export default function IngestHub() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || '';
+      const userId = session?.user?.id;
+
+      if (!userId || !tenantId) throw new Error("No user or tenant found.");
 
       const batchId = crypto.randomUUID();
       const { error: batchError } = await supabase.from('batches').insert({
         id: batchId,
         template_id: selectedTemplate,
-        status: 'uploading'
+        status: 'uploading',
+        tenant_id: tenantId,
+        uploaded_by: userId
       });
       if (batchError) throw new Error(`Error creando lote: ${batchError.message}`);
 
