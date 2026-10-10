@@ -81,7 +81,7 @@ export default function IngestHub() {
       const { error: batchError } = await supabase.from('batches').insert({
         id: batchId,
         template_id: selectedTemplate,
-        status: 'uploading',
+        status: 'pending',
         tenant_id: tenantId,
         uploaded_by: userId
       });
