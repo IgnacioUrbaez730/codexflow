@@ -65,33 +65,41 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
     };
 
     try {
-      let inserted = false;
+      const res = await fetch('/api/v1/demo-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-      // 1. Intento primario: Supabase JS Client directo
-      try {
+      if (!res.ok) {
+        // Fallback directo a Supabase JS si el backend no responde
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL || '',
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
         );
         const { error: supaError } = await supabase.from('demo_requests').insert([payload]);
-        if (!supaError) {
-          inserted = true;
-        } else {
-          console.warn('Supabase direct insert notice:', supaError.message);
-        }
-      } catch (err) {
-        console.warn('Supabase client unconfigured or unavailable, falling back to endpoint', err);
-      }
-
-      // 2. Si no insertó por Supabase JS directo, intentar vía endpoint backend /api/v1/demo-requests
-      if (!inserted) {
-        const res = await fetch('/api/v1/demo-requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
+        if (supaError) {
           throw new Error('No se pudo registrar la solicitud en este momento.');
+        }
+      } else {
+        const resData = await res.json().catch(() => ({}));
+        if (resData?.notify_email) {
+          await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(resData.notify_email)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+              _subject: `[CodexFlow] Nueva Solicitud de Demo: ${payload.organization}`,
+              _template: 'table',
+              Institucion: payload.organization,
+              Contacto: payload.full_name,
+              Correo: payload.email,
+              Telefono: payload.phone || 'No especificado',
+              Fondo_Documental: payload.message || 'No especificado',
+            }),
+          }).catch(() => {});
         }
       }
 

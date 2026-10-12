@@ -1857,28 +1857,276 @@ async def get_digitizer_metrics(auth: Dict[str, Any] = Depends(get_auth_context)
         print(f"Error in get_digitizer_metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+import smtplib
+import urllib.request
+from email.message import EmailMessage
+
+DEMO_REQUESTS_R2_KEY = "_system/demo_requests/requests.json"
+_demo_requests_memory: List[Dict[str, Any]] = []
+
+
+def _load_r2_demo_requests() -> List[Dict[str, Any]]:
+    bucket = os.getenv("R2_BUCKET_NAME")
+    if not bucket:
+        return list(_demo_requests_memory)
+    try:
+        obj = s3_client.get_object(Bucket=bucket, Key=DEMO_REQUESTS_R2_KEY)
+        raw = obj["Body"].read().decode("utf-8")
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return data
+    except Exception as e:
+        print(f"Info reading demo_requests from R2: {e}")
+    return list(_demo_requests_memory)
+
+
+def _save_r2_demo_requests(records: List[Dict[str, Any]]) -> None:
+    global _demo_requests_memory
+    _demo_requests_memory = list(records)
+    bucket = os.getenv("R2_BUCKET_NAME")
+    if not bucket:
+        return
+    try:
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=DEMO_REQUESTS_R2_KEY,
+            Body=json.dumps(records, ensure_ascii=False, indent=2).encode("utf-8"),
+            ContentType="application/json"
+        )
+    except Exception as e:
+        print(f"Warning saving demo_requests to R2: {e}")
+
+
+def _resolve_superadmin_email() -> str:
+    env_email = os.getenv("SUPERADMIN_EMAIL", "").strip()
+    if env_email:
+        return env_email
+    try:
+        prof_res = supabase.table("user_profiles").select("user_id").eq("role", "superadmin").limit(1).execute()
+        if prof_res.data and len(prof_res.data) > 0:
+            su_id = prof_res.data[0]["user_id"]
+            u_res = supabase.auth.admin.get_user_by_id(su_id)
+            if u_res and u_res.user and u_res.user.email:
+                return u_res.user.email
+    except Exception:
+        pass
+    return ""
+
+
+def _send_demo_email_notification(record: Dict[str, Any], recipient_email: str) -> None:
+    if not recipient_email:
+        return
+    subject = f"[CodexFlow] Nueva Solicitud de Demo: {record.get('organization', '')}"
+    html_body = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #0f172a; margin-top: 0;">Nueva Solicitud de Demostración — CodexFlow</h2>
+        <p style="color: #475569; font-size: 14px;">Se ha recibido una nueva solicitud desde la portada pública:</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #334155;">Institución / Organización:</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #0f172a;">{record.get('organization') or ''}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #334155;">Nombre del Contacto:</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #0f172a;">{record.get('full_name') or ''}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #334155;">Correo Electrónico:</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #0f172a;">{record.get('email') or ''}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #334155;">Teléfono / WhatsApp:</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #0f172a;">{record.get('phone') or 'No especificado'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #334155;">Fondo Documental:</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #0f172a;">{record.get('message') or 'No especificado'}</td></tr>
+            <tr><td style="padding: 8px; font-weight: bold; color: #334155;">Fecha UTC:</td><td style="padding: 8px; color: #64748b;">{record.get('created_at') or ''}</td></tr>
+        </table>
+        <p style="font-size: 13px; color: #64748b;">Puedes gestionar esta solicitud y crear la ONG con un clic desde el Panel Global de SuperAdmin (<code>/superadmin</code>).</p>
+    </div>
+    """
+
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
+    if resend_api_key:
+        try:
+            sender = os.getenv("RESEND_FROM_EMAIL", "CodexFlow <onboarding@resend.dev>")
+            req_body = json.dumps({
+                "from": sender,
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_body
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=req_body,
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
+            return
+        except Exception as e:
+            print(f"Warning sending email via Resend: {e}")
+
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
+    if smtp_user and smtp_password:
+        try:
+            smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = smtp_user
+            msg["To"] = recipient_email
+            msg.set_content(
+                f"Nueva Solicitud de Demo en CodexFlow\n"
+                f"Institución: {record.get('organization')}\n"
+                f"Contacto: {record.get('full_name')}\n"
+                f"Correo: {record.get('email')}\n"
+                f"Teléfono: {record.get('phone') or 'No especificado'}\n"
+                f"Fondo Documental: {record.get('message') or 'No especificado'}\n"
+            )
+            msg.add_alternative(html_body, subtype="html")
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Warning sending email via SMTP: {e}")
+
+
 class DemoRequestCreate(BaseModel):
     full_name: str
     organization: str
     email: str
     phone: Optional[str] = None
     message: Optional[str] = None
+    status: Optional[str] = "pending"
+
+
+class DemoRequestStatusUpdate(BaseModel):
+    status: str
+
 
 @app.post("/api/v1/demo-requests")
-async def create_demo_request(payload: DemoRequestCreate):
+async def create_demo_request(payload: DemoRequestCreate, background_tasks: BackgroundTasks):
+    record: Dict[str, Any] = {
+        "id": str(uuid.uuid4()),
+        "full_name": payload.full_name.strip(),
+        "organization": payload.organization.strip(),
+        "email": payload.email.strip(),
+        "phone": payload.phone.strip() if payload.phone else None,
+        "message": payload.message.strip() if payload.message else None,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    # 1. Guardar en Supabase si la tabla existe
     try:
-        data = {
-            "full_name": payload.full_name,
-            "organization": payload.organization,
-            "email": payload.email,
-            "phone": payload.phone,
-            "message": payload.message,
-            "status": "pending"
-        }
-        res = supabase.table("demo_requests").insert(data).execute()
-        return {"status": "success", "data": res.data if res else None}
+        res = supabase.table("demo_requests").insert(record).execute()
+        if res and res.data and len(res.data) > 0 and res.data[0].get("id"):
+            record["id"] = str(res.data[0]["id"])
+    except Exception as supa_err:
+        print(f"Notice: Supabase demo_requests table unavailable, relying on R2 backup: {supa_err}")
+
+    # 2. Guardar siempre en Cloudflare R2 (_system/demo_requests/requests.json)
+    try:
+        existing = _load_r2_demo_requests()
+        filtered = [r for r in existing if r.get("id") != record["id"]]
+        filtered.insert(0, record)
+        _save_r2_demo_requests(filtered)
+    except Exception as r2_err:
+        print(f"Warning saving demo request to R2: {r2_err}")
+
+    superadmin_email = _resolve_superadmin_email()
+    if superadmin_email and (
+        (os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"))
+        or os.getenv("RESEND_API_KEY")
+    ):
+        background_tasks.add_task(_send_demo_email_notification, record, superadmin_email)
+
+    return {
+        "status": "success",
+        "data": record,
+        "notify_email": superadmin_email
+    }
+
+
+@app.get("/api/superadmin/demo-requests")
+async def get_superadmin_demo_requests(auth: Dict[str, Any] = Depends(get_superadmin_context)):
+    merged_by_id: Dict[str, Dict[str, Any]] = {}
+
+    # 1. Leer desde R2
+    try:
+        r2_records = _load_r2_demo_requests()
+        for r in r2_records:
+            if isinstance(r, dict) and r.get("id"):
+                merged_by_id[str(r["id"])] = r
     except Exception as e:
-        print(f"Error creating demo request: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error saving demo request")
+        print(f"Warning loading R2 demo_requests: {e}")
+
+    # 2. Leer desde Supabase si la tabla existe
+    try:
+        res = supabase.table("demo_requests").select("*").order("created_at", desc=True).execute()
+        if res and res.data:
+            for r in res.data:
+                rid = str(r.get("id") or "")
+                if rid:
+                    if rid in merged_by_id:
+                        merged_by_id[rid] = {**r, **merged_by_id[rid]}
+                    else:
+                        merged_by_id[rid] = r
+    except Exception as e:
+        print(f"Info: Supabase demo_requests table not queried: {e}")
+
+    records = list(merged_by_id.values())
+    records.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return {"status": "success", "data": records}
+
+
+@app.patch("/api/superadmin/demo-requests/{request_id}")
+async def update_superadmin_demo_request(
+    request_id: str,
+    payload: Optional[DemoRequestStatusUpdate] = None,
+    status: Optional[str] = Query(None),
+    auth: Dict[str, Any] = Depends(get_superadmin_context)
+):
+    new_status = (payload.status if payload and payload.status else status) or "contacted"
+    if new_status not in ("pending", "contacted", "approved", "archived"):
+        raise HTTPException(status_code=400, detail="Estado inválido")
+
+    # 1. Actualizar en Supabase si la tabla existe
+    try:
+        supabase.table("demo_requests").update({"status": new_status}).eq("id", request_id).execute()
+    except Exception as e:
+        print(f"Info updating demo_requests in Supabase: {e}")
+
+    # 2. Actualizar en R2
+    try:
+        existing = _load_r2_demo_requests()
+        updated = False
+        for item in existing:
+            if str(item.get("id")) == request_id:
+                item["status"] = new_status
+                updated = True
+        if updated:
+            _save_r2_demo_requests(existing)
+    except Exception as e:
+        print(f"Warning updating demo_requests in R2: {e}")
+
+    return {"status": "success"}
+
+
+@app.delete("/api/superadmin/demo-requests/{request_id}")
+async def delete_superadmin_demo_request(
+    request_id: str,
+    auth: Dict[str, Any] = Depends(get_superadmin_context)
+):
+    # 1. Eliminar de Supabase si existe
+    try:
+        supabase.table("demo_requests").delete().eq("id", request_id).execute()
+    except Exception as e:
+        print(f"Info deleting demo_request from Supabase: {e}")
+
+    # 2. Eliminar de R2
+    try:
+        existing = _load_r2_demo_requests()
+        filtered = [r for r in existing if str(r.get("id")) != request_id]
+        _save_r2_demo_requests(filtered)
+    except Exception as e:
+        print(f"Warning deleting demo_request from R2: {e}")
+
+    return {"status": "success"}
+
 
 

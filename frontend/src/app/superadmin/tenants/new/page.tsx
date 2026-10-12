@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,6 +15,7 @@ export default function NewTenantPage() {
     tax_id: "",
     phone: ""
   });
+  const [demoId, setDemoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -23,6 +24,28 @@ export default function NewTenantPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
   );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const qName = params.get("name");
+      const qEmail = params.get("admin_email");
+      const qContact = params.get("contact_name");
+      const qPhone = params.get("phone");
+      const qDemoId = params.get("demo_id");
+
+      setFormData(prev => ({
+        ...prev,
+        name: qName || prev.name,
+        admin_email: qEmail || prev.admin_email,
+        contact_name: qContact || prev.contact_name,
+        phone: qPhone || prev.phone,
+      }));
+      if (qDemoId) {
+        setDemoId(qDemoId);
+      }
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -48,6 +71,16 @@ export default function NewTenantPage() {
 
       const data = await res.json();
       if (res.ok) {
+        if (demoId) {
+          await fetch(`/api/superadmin/demo-requests/${encodeURIComponent(demoId)}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: "approved" })
+          }).catch(() => {});
+        }
         router.push("/superadmin");
       } else {
         setError(data.detail || "Error al crear la organización");

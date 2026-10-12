@@ -24,9 +24,21 @@ interface Orphan {
   role: string | null;
 }
 
+interface DemoRequest {
+  id: string;
+  full_name: string;
+  organization: string;
+  email: string;
+  phone: string | null;
+  message: string | null;
+  status: "pending" | "contacted" | "approved" | "archived";
+  created_at: string;
+}
+
 export default function SuperadminDashboard() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [orphans, setOrphans] = useState<Orphan[]>([]);
+  const [demoRequests, setDemoRequests] = useState<DemoRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [newQuota, setNewQuota] = useState<number | "">("");
@@ -83,9 +95,59 @@ export default function SuperadminDashboard() {
     }
   };
 
+  const fetchDemoRequests = async () => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch("/api/superadmin/demo-requests", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDemoRequests(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching demo requests:", error);
+    }
+  };
+
+  const updateDemoRequestStatus = async (requestId: string, status: DemoRequest["status"]) => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`/api/superadmin/demo-requests/${requestId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        await fetchDemoRequests();
+      }
+    } catch (error) {
+      console.error("Error updating demo request status:", error);
+    }
+  };
+
+  const deleteDemoRequest = async (requestId: string) => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`/api/superadmin/demo-requests/${requestId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        await fetchDemoRequests();
+      }
+    } catch (error) {
+      console.error("Error deleting demo request:", error);
+    }
+  };
+
   useEffect(() => {
     fetchTenants();
     fetchOrphans();
+    fetchDemoRequests();
   }, []);
 
   const handleEditClick = (tenant: Tenant) => {
@@ -192,6 +254,8 @@ export default function SuperadminDashboard() {
     router.push("/login");
   };
 
+  const pendingDemoCount = demoRequests.filter(r => r.status === "pending").length;
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
@@ -213,6 +277,143 @@ export default function SuperadminDashboard() {
             Cerrar Sesión
           </button>
         </div>
+      </div>
+
+      {/* Sección Solicitudes de Demostración y Acceso */}
+      <div className="mb-8 p-5 bg-emerald-50/70 border border-emerald-200 rounded-xl shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-emerald-950">
+              Solicitudes de Demostración y Acceso
+            </h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+              {pendingDemoCount} pendiente{pendingDemoCount === 1 ? "" : "s"}
+            </span>
+          </div>
+          <button
+            onClick={fetchDemoRequests}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-900 underline self-start sm:self-auto"
+          >
+            Actualizar lista
+          </button>
+        </div>
+
+        {demoRequests.length === 0 ? (
+          <p className="text-sm text-gray-600 bg-white/80 p-4 rounded-lg border border-emerald-100">
+            No hay solicitudes de demostración registradas todavía. Cuando una institución envíe el formulario en la portada, aparecerá aquí y recibirás un correo.
+          </p>
+        ) : (
+          <div className="overflow-x-auto bg-white rounded-lg shadow-sm border border-emerald-100">
+            <table className="min-w-full table-auto">
+              <thead className="bg-emerald-100/60">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Fecha</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Institución / Contacto</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Datos de Contacto</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Fondo Documental</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Estado</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-700">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {demoRequests.map((req) => {
+                  const slug = req.organization
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-|-$/g, "");
+                  const cleanPhone = (req.phone || "").replace(/[^0-9]/g, "");
+                  const createUrl = `/superadmin/tenants/new?name=${encodeURIComponent(slug)}&admin_email=${encodeURIComponent(req.email)}&contact_name=${encodeURIComponent(req.full_name)}&phone=${encodeURIComponent(req.phone || "")}&demo_id=${encodeURIComponent(req.id)}`;
+
+                  return (
+                    <tr key={req.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                        {req.created_at ? new Date(req.created_at).toLocaleDateString() : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="font-semibold text-gray-900">{req.organization}</div>
+                        <div className="text-xs text-gray-600">{req.full_name}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs space-y-1">
+                        <div>
+                          <a
+                            href={`mailto:${req.email}?subject=${encodeURIComponent("Demostración CodexFlow - " + req.organization)}`}
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            {req.email}
+                          </a>
+                        </div>
+                        {req.phone && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600">{req.phone}</span>
+                            {cleanPhone && (
+                              <a
+                                href={`https://wa.me/${cleanPhone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-0.5 bg-green-100 text-green-800 hover:bg-green-200 rounded text-[11px] font-semibold"
+                              >
+                                WhatsApp
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-700 max-w-xs">
+                        {req.message || <span className="text-gray-400 italic">No especificado</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {req.status === "pending" && (
+                          <span className="px-2 py-1 rounded font-medium bg-amber-100 text-amber-800">
+                            Pendiente
+                          </span>
+                        )}
+                        {req.status === "contacted" && (
+                          <span className="px-2 py-1 rounded font-medium bg-blue-100 text-blue-800">
+                            Contactado
+                          </span>
+                        )}
+                        {req.status === "approved" && (
+                          <span className="px-2 py-1 rounded font-medium bg-green-100 text-green-800">
+                            ONG Creada
+                          </span>
+                        )}
+                        {req.status === "archived" && (
+                          <span className="px-2 py-1 rounded font-medium bg-gray-100 text-gray-700">
+                            Archivado
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link
+                            href={createUrl}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded font-medium transition"
+                          >
+                            + Crear ONG
+                          </Link>
+                          {req.status !== "contacted" && req.status !== "approved" && (
+                            <button
+                              onClick={() => updateDemoRequestStatus(req.id, "contacted")}
+                              className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2.5 py-1 rounded font-medium transition"
+                            >
+                              Contactado
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteDemoRequest(req.id)}
+                            className="bg-red-100 hover:bg-red-200 text-red-700 px-2.5 py-1 rounded font-medium transition"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       
       {orphans.length > 0 && (
