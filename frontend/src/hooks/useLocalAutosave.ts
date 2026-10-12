@@ -66,12 +66,6 @@ export function useLocalAutosave<T = Record<string, any>>({
 
   const serializedForm = JSON.stringify(formData || {});
   const serializedMod = JSON.stringify(modifiedFields || []);
-  const serializedViewer = JSON.stringify({
-    z: viewerState?.zoom ?? 1,
-    x: Math.round(viewerState?.panX ?? viewerState?.pan?.x ?? 0),
-    y: Math.round(viewerState?.panY ?? viewerState?.pan?.y ?? 0),
-    r: viewerState?.rotation ?? 0,
-  });
 
   // Cleanup toast timer
   const dismissToast = useCallback(() => {
@@ -159,14 +153,14 @@ export function useLocalAutosave<T = Record<string, any>>({
     };
   }, [storageKey]); // Only re-run when the storage key changes
 
-  // Auto-save debounced effect upon changes to formData or viewerState
+  // Auto-save debounced effect upon changes to formData
   useEffect(() => {
     // Avoid saving during SSR, without storageKey, or during initial restore
     if (typeof window === "undefined" || !storageKey || !tenantId || !folioId) {
       return;
     }
 
-    const currentHash = `${storageKey}::${serializedForm}::${serializedMod}::${serializedViewer}`;
+    const currentHash = `${storageKey}::${serializedForm}`;
 
     if (isRestoringRef.current) {
       lastSavedHashRef.current = currentHash;
@@ -232,7 +226,6 @@ export function useLocalAutosave<T = Record<string, any>>({
   }, [
     serializedForm,
     serializedMod,
-    serializedViewer,
     modifiedFields?.length,
     storageKey,
     tenantId,

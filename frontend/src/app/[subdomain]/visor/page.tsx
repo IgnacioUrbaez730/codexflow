@@ -621,18 +621,6 @@ export default function VisorDual() {
     if (draft.formData) {
       setFormData(draft.formData);
     }
-    if (draft.viewerState) {
-      if (typeof draft.viewerState.zoom === "number") setZoom(draft.viewerState.zoom);
-      if (draft.viewerState.pan) {
-        setPan(draft.viewerState.pan);
-      } else if (
-        typeof draft.viewerState.panX === "number" &&
-        typeof draft.viewerState.panY === "number"
-      ) {
-        setPan({ x: draft.viewerState.panX, y: draft.viewerState.panY });
-      }
-      if (typeof draft.viewerState.rotation === "number") setRotation(draft.viewerState.rotation);
-    }
     if (draft.modifiedFields && Array.isArray(draft.modifiedFields)) {
       setModifiedFields(new Set(draft.modifiedFields));
     }
