@@ -162,6 +162,7 @@ export default function VisorDual() {
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
   const [showAIOverlay, setShowAIOverlay] = useState(false);
+  const [autoCenterEnabled, setAutoCenterEnabled] = useState(false);
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
   const [isSavingServer, setIsSavingServer] = useState(false);
 
@@ -543,29 +544,31 @@ export default function VisorDual() {
   const handleFieldFocus = useCallback(
     (fieldId: string) => {
       setActiveFieldKey(fieldId);
-      const pred = aiPredictions.find(
-        (p) => p.fieldKey === fieldId || p.field_key === fieldId
-      );
-      if (pred && pred.bbox) {
-        centerCameraOnBBox(pred.bbox, zoom, false);
+      if (autoCenterEnabled) {
+        const pred = aiPredictions.find(
+          (p) => p.fieldKey === fieldId || p.field_key === fieldId
+        );
+        if (pred && pred.bbox) {
+          centerCameraOnBBox(pred.bbox, zoom, false);
+        }
       }
     },
-    [aiPredictions, centerCameraOnBBox, zoom]
+    [autoCenterEnabled, aiPredictions, centerCameraOnBBox, zoom]
   );
 
-  // Force camera recentering on active field (Alt + C)
-  const handleForceRecenter = useCallback(() => {
-    if (!activeFieldKey) return;
-    if (!showAIOverlay) {
-      setShowAIOverlay(true);
+  // Toggle automatic camera centering on active field (Alt + C)
+  const handleToggleAutoCenter = useCallback(() => {
+    const nextState = !autoCenterEnabled;
+    setAutoCenterEnabled((prev) => !prev);
+    if (nextState && activeFieldKey) {
+      const pred = aiPredictions.find(
+        (p) => p.fieldKey === activeFieldKey || p.field_key === activeFieldKey
+      );
+      if (pred && pred.bbox) {
+        centerCameraOnBBox(pred.bbox, zoom, true);
+      }
     }
-    const pred = aiPredictions.find(
-      (p) => p.fieldKey === activeFieldKey || p.field_key === activeFieldKey
-    );
-    if (pred && pred.bbox) {
-      centerCameraOnBBox(pred.bbox, zoom, true);
-    }
-  }, [activeFieldKey, showAIOverlay, aiPredictions, centerCameraOnBBox, zoom]);
+  }, [autoCenterEnabled, activeFieldKey, aiPredictions, centerCameraOnBBox, zoom]);
 
   // Click on a bounding box directly inserts its text into the focused field
   const handleSelectPredictionBox = useCallback(
@@ -812,7 +815,7 @@ export default function VisorDual() {
         handleToggleAI();
       } else if (e.altKey && (e.key === "c" || e.key === "C")) {
         e.preventDefault();
-        handleForceRecenter();
+        handleToggleAutoCenter();
       } else if (e.altKey && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
         setIsDiscardModalOpen(true);
@@ -827,7 +830,7 @@ export default function VisorDual() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleMarkRevision, handleToggleAI, handleForceRecenter]);
+  }, [handleSave, handleMarkRevision, handleToggleAI, handleToggleAutoCenter]);
 
   if (loading) {
     return <div className="p-8 text-center text-gray-600 font-sans">Cargando folio e indexación...</div>;
@@ -928,18 +931,18 @@ export default function VisorDual() {
             <span>IA [Alt+A]</span>
           </button>
 
-          {/* Force Recenter Button (Alt + C) */}
-          {activeFieldKey && (
-            <button
-              type="button"
-              onClick={handleForceRecenter}
-              className="px-2 py-1 flex items-center gap-1 rounded hover:bg-gray-700 text-xs text-amber-300 font-medium transition-colors"
-              title="Recentrar en campo activo (Alt + C)"
-            >
-              <Crosshair className="w-3.5 h-3.5" />
-              <span>Centrar [Alt+C]</span>
-            </button>
-          )}
+          {/* Auto-Center Camera Toggle Button (Alt + C) */}
+          <button
+            type="button"
+            onClick={handleToggleAutoCenter}
+            className={`px-2.5 py-1 flex items-center gap-1.5 rounded text-xs font-medium transition-colors cursor-pointer select-none ${
+              autoCenterEnabled ? "bg-amber-600 text-white shadow-xs" : "hover:bg-gray-700 text-gray-300"
+            }`}
+            title="Alternar Centrado Automático (Alt + C)"
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+            <span>Centrar [Alt+C]</span>
+          </button>
 
           {/* Interactive Magnifier Toggle */}
           <button
