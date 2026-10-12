@@ -72,7 +72,7 @@ export default function VisorDual() {
   const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set());
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
-  const [showAIOverlay, setShowAIOverlay] = useState(true);
+  const [showAIOverlay, setShowAIOverlay] = useState(false);
 
   // Image viewer interaction states
   const [zoom, setZoom] = useState(1);
