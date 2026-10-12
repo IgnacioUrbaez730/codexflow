@@ -64,11 +64,11 @@ export default function HeroSection({ onOpenDemoModal }: HeroSectionProps) {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {isAuthenticated ? (
               <Link
-                href="/batches"
+                href="/login"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl text-base font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-xl shadow-blue-600/30 transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <Layers className="w-5 h-5" />
-                Ir a mi Panel de Lotes
+                Ir a mi Panel de Control
                 <ArrowRight className="w-4 h-4 ml-1" />
               </Link>
             ) : (
