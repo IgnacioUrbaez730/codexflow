@@ -202,7 +202,7 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         user_client = auth["user_client"]
         tenant_id = auth["tenant_id"]
-        res = user_client.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
+        res = supabase.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
         
         if not res.data or len(res.data) == 0:
             return {"status": "success", "data": None}
