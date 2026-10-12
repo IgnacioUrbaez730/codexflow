@@ -64,3 +64,10 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
     - **Soporte Dual Excel (.xlsx) y CSV (.csv):** Integración de `openpyxl` en backend FastAPI para emitir archivos XLSX nativos con estilos corporativos (cabecera `#1E293B`, bordes `#E2E8F0`, autoajuste de ancho) y CSV optimizado con delimitador `;`, BOM UTF-8 y directiva `sep=;\r\n` para apertura perfecta en Excel en español.
     - **Desglose Dinámico de Metadatos:** En vista global sin lote filtrado, los campos indexados se analizan dinámicamente y se proyectan en columnas individuales tituladas (e.g. "Nombre Padre", "Fecha Nacimiento") en lugar de un JSON agrupado en una sola celda.
     - **Interfaz Frontend:** Dropdown interactivo en `/[subdomain]/records` con opciones para descargar en formato Excel o CSV y estados de carga.
+
+19. **Indexación Asistida por IA y Prellenado Inteligente (Spec 009):**
+    - **Capa Vectorial SVG:** Bounding boxes semitransparentes verde/azul proyectadas sobre la imagen original con realce amarillo en foco activo, cálculo matricial ante rotaciones (0°, 90°, 180°, 270°) y sincronización dentro de la Lupa Óptica.
+    - **Prellenado Condicional:** Umbral de confianza $\ge 80\%$ y validación de sintaxis (fechas ISO). Insignia visual editable `IA: X%`.
+    - **Ergonomía:** Centrado suave al tabular si `zoom <= 2.5x` (preserva cámara en zoom alto). Atajos `Alt + A` (toggle capa), `Alt + C` (centrado forzado), clic en caja para insertar texto.
+    - **Active Learning:** Registro de discrepancias en `training_data` al guardar con `Ctrl + Enter` y tarjeta de métricas de precisión en el Dashboard.
+
