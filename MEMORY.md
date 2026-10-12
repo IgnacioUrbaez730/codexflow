@@ -86,3 +86,7 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
 22. **Loop de Mantenimiento del Motor de IA en Backend (Spec 009, Loop 1):**
     - **Reparación de `worker.py` y `ai_engine.py`:** Se corrigió el import relativo (`from ai_engine`), el bloqueo por ausencia de `libvips` en Render y la consulta rota `folios -> batches -> templates(fields)`. Se implementó detección visual de renglones de escritura con `PIL` (`_detect_visual_lines_with_pil`), mapeo real hacia los `fields` de la plantilla y alimentación con el historial de `training_data` del `tenant_id`.
     - **Auto-análisis bajo demanda:** Se incorporó `ensure_folio_ai_predictions` y el endpoint `POST /api/v1/folios/{folio_id}/analyze-ai` para que incluso los folios antiguos sin `ai_predictions` generen sus recuadros `[xmin, ymin, xmax, ymax]` al cargarse o al activar `IA [Alt+A]` en el Visor.
+
+23. **Loop de Mantenimiento de Registros y Borrado (Spec 008, Loop 1):**
+    - **Eliminación Segura de Registros:** Se implementó `DELETE /api/v1/records/{folio_id}` con verificación estricta de `tenant_id` y roles (prohibido para digitadores, archivistas solo sus lotes, admin/superadmin total).
+    - **Interfaz de Usuario:** Botón de papelera roja (`Trash2`) en la tabla de Registros y en el modal de detalle, modal de confirmación de seguridad con indicador de carga y refresco automático de la lista de registros.
