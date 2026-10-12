@@ -4,7 +4,8 @@ import hashlib
 import uuid
 import boto3
 from botocore.client import Config
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import json
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
 from pydantic import BaseModel
 from supabase import create_client, Client, ClientOptions
@@ -1050,4 +1051,325 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
         return {"status": "success", "data": res.data[0]}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+class UpdateRecordMetadataRequest(BaseModel):
+    metadata: Dict[str, Any]
+
+class RecordTemplateField(BaseModel):
+    id: Optional[str] = None
+    key: Optional[str] = None
+    name: Optional[str] = None
+    label: Optional[str] = None
+    type: Optional[str] = None
+    required: Optional[bool] = False
+
+class RecordItem(BaseModel):
+    id: str
+    batch_id: Optional[str] = None
+    batch_name: Optional[str] = None
+    status: Optional[str] = None
+    r2_url: Optional[str] = None
+    file_name: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    verified_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    view_url: Optional[str] = None
+
+@app.get("/api/v1/records")
+async def get_records(
+    batch_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    if auth.get("role") == "digitizer":
+        raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para consultar registros")
+    try:
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+        
+        query = user_client.table("folios").select("*, batches(name, uploaded_by)", count="exact").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
+        
+        if batch_id:
+            query = query.eq("batch_id", batch_id)
+        if start_date:
+            query = query.gte("verified_at", start_date)
+        if end_date:
+            query = query.lte("verified_at", end_date)
+            
+        template_fields = None
+        if batch_id:
+            try:
+                batch_res = user_client.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
+                if batch_res.data and len(batch_res.data) > 0:
+                    tpl_data = batch_res.data[0].get("templates")
+                    if tpl_data and "fields" in tpl_data:
+                        template_fields = tpl_data["fields"]
+                    elif batch_res.data[0].get("template_id"):
+                        tpl_id = batch_res.data[0]["template_id"]
+                        tpl_res = user_client.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
+                        if tpl_res.data and len(tpl_res.data) > 0:
+                            template_fields = tpl_res.data[0].get("fields", [])
+            except Exception as t_err:
+                print(f"Error fetching template fields for batch {batch_id}: {t_err}")
+
+        if search and search.strip():
+            search_term = search.strip().lower()
+            res = query.order("verified_at", desc=True).execute()
+            raw_folios = res.data or []
+            
+            def match_folio(f: Dict[str, Any]) -> bool:
+                r2 = f.get("r2_url") or ""
+                if search_term in r2.lower():
+                    return True
+                meta = f.get("metadata") or {}
+                if isinstance(meta, dict):
+                    for v in meta.values():
+                        if v is not None and search_term in str(v).lower():
+                            return True
+                return False
+
+            filtered_folios = [f for f in raw_folios if match_folio(f)]
+            count = len(filtered_folios)
+            offset = max(0, (page - 1) * page_size)
+            paged_folios = filtered_folios[offset:offset + page_size]
+        else:
+            offset = max(0, (page - 1) * page_size)
+            query = query.order("verified_at", desc=True).range(offset, offset + page_size - 1)
+            res = query.execute()
+            paged_folios = res.data or []
+            count = res.count if res.count is not None else len(paged_folios)
+
+        processed_folios = []
+        bucket_name = os.getenv("R2_BUCKET_NAME")
+        for f in paged_folios:
+            folio_dict = dict(f)
+            batch_rel = folio_dict.get("batches")
+            if isinstance(batch_rel, dict):
+                folio_dict["batch_name"] = batch_rel.get("name")
+            else:
+                folio_dict["batch_name"] = None
+                
+            r2_url = folio_dict.get("r2_url")
+            if r2_url:
+                folio_dict["file_name"] = r2_url.split("/")[-1]
+                try:
+                    folio_dict["view_url"] = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': bucket_name, 'Key': r2_url},
+                        ExpiresIn=3600
+                    )
+                except Exception as s3_err:
+                    print(f"Error generating view_url for {r2_url}: {s3_err}")
+                    folio_dict["view_url"] = None
+            else:
+                folio_dict["file_name"] = None
+                folio_dict["view_url"] = None
+                
+            processed_folios.append(folio_dict)
+
+        total_pages = max(1, (count + page_size - 1) // page_size) if count > 0 else 1
+
+        return {
+            "status": "success",
+            "data": processed_folios,
+            "total_records": count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "template_fields": template_fields
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in get_records: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/v1/records/{folio_id}")
+async def update_record_metadata(
+    folio_id: str,
+    request: UpdateRecordMetadataRequest,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    try:
+        caller_id = auth["user_id"]
+        role = auth["role"]
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+
+        if role == "digitizer":
+            raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para editar")
+
+        folio_res = user_client.table("folios").select("*, batches(uploaded_by)").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+        if not folio_res.data:
+            raise HTTPException(status_code=404, detail="Folio no encontrado")
+
+        folio = folio_res.data[0]
+        batch_rel = folio.get("batches") or {}
+        batch_uploader = batch_rel.get("uploaded_by")
+
+        if role == "archivist" and batch_uploader != caller_id:
+            raise HTTPException(status_code=403, detail="Permiso denegado: solo puedes editar registros de lotes que subiste")
+
+        if folio.get("status") == "in_progress":
+            raise HTTPException(status_code=409, detail="El documento está siendo indexado en este momento")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        update_data = {
+            "metadata": request.metadata,
+            "updated_at": now_iso
+        }
+
+        try:
+            res = user_client.table("folios").update({**update_data, "last_modified_by": caller_id}).eq("id", folio_id).execute()
+        except Exception:
+            res = user_client.table("folios").update(update_data).eq("id", folio_id).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Error al actualizar metadatos del folio")
+
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in update_record_metadata: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/records/export")
+async def export_records_csv(
+    batch_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    if auth.get("role") == "digitizer":
+        raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para exportar registros")
+    try:
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+
+        query = user_client.table("folios").select("*, batches(name)").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
+        if batch_id:
+            query = query.eq("batch_id", batch_id)
+        if start_date:
+            query = query.gte("verified_at", start_date)
+        if end_date:
+            query = query.lte("verified_at", end_date)
+
+        res = query.order("verified_at", desc=True).execute()
+        raw_folios = res.data or []
+
+        if search and search.strip():
+            search_term = search.strip().lower()
+            def match_folio(f: Dict[str, Any]) -> bool:
+                r2 = f.get("r2_url") or ""
+                if search_term in r2.lower():
+                    return True
+                meta = f.get("metadata") or {}
+                if isinstance(meta, dict):
+                    for v in meta.values():
+                        if v is not None and search_term in str(v).lower():
+                            return True
+                return False
+            folios = [f for f in raw_folios if match_folio(f)]
+        else:
+            folios = raw_folios
+
+        template_fields = []
+        if batch_id:
+            try:
+                batch_res = user_client.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
+                if batch_res.data and len(batch_res.data) > 0:
+                    tpl_data = batch_res.data[0].get("templates")
+                    if tpl_data and "fields" in tpl_data:
+                        template_fields = tpl_data["fields"]
+                    elif batch_res.data[0].get("template_id"):
+                        tpl_id = batch_res.data[0]["template_id"]
+                        tpl_res = user_client.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
+                        if tpl_res.data and len(tpl_res.data) > 0:
+                            template_fields = tpl_res.data[0].get("fields", [])
+            except Exception as t_err:
+                print(f"Error fetching template fields for export: {t_err}")
+
+        def iter_csv():
+            output = io.StringIO()
+            yield "\ufeff"
+
+            if batch_id and template_fields:
+                field_keys = []
+                headers = ["ID Folio", "Archivo", "Fecha Verificación", "Estado"]
+                for f in template_fields:
+                    f_id = f.get("id") or f.get("key") or f.get("name")
+                    f_label = f.get("label") or f.get("name") or f_id
+                    field_keys.append((f_id, f_label))
+                    headers.append(f_label)
+
+                writer = csv.writer(output)
+                writer.writerow(headers)
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+
+                for folio in folios:
+                    r2_url = folio.get("r2_url") or ""
+                    file_name = r2_url.split("/")[-1] if r2_url else ""
+                    row = [
+                        folio.get("id", ""),
+                        file_name,
+                        folio.get("verified_at", ""),
+                        folio.get("status", "")
+                    ]
+                    meta = folio.get("metadata") or {}
+                    for f_id, f_label in field_keys:
+                        val = meta.get(f_id)
+                        if val is None:
+                            val = meta.get(f_label, "")
+                        row.append(str(val) if val is not None else "")
+                    writer.writerow(row)
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate(0)
+            else:
+                headers = ["ID Folio", "Archivo", "Lote", "Fecha Verificación", "Estado", "Metadatos"]
+                writer = csv.writer(output)
+                writer.writerow(headers)
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+
+                for folio in folios:
+                    r2_url = folio.get("r2_url") or ""
+                    file_name = r2_url.split("/")[-1] if r2_url else ""
+                    batch_info = folio.get("batches") or {}
+                    batch_name = batch_info.get("name", "")
+                    meta = folio.get("metadata") or {}
+                    row = [
+                        folio.get("id", ""),
+                        file_name,
+                        batch_name,
+                        folio.get("verified_at", ""),
+                        folio.get("status", ""),
+                        json.dumps(meta, ensure_ascii=False)
+                    ]
+                    writer.writerow(row)
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate(0)
+
+        filename = f"registros_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+        return StreamingResponse(
+            iter_csv(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in export_records_csv: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

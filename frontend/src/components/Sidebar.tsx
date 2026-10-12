@@ -11,6 +11,9 @@ export default function Sidebar({ subdomain, role }: { subdomain: string, role: 
     { href: `/${subdomain}/dashboard`, label: 'Dashboard' },
     { href: `/${subdomain}/ingest`, label: 'Ingesta/Dudosos' },
     { href: `/${subdomain}/visor`, label: 'Visor de Indexación' },
+    ...(role === 'admin' || role === 'archivist'
+      ? [{ href: `/${subdomain}/records`, label: 'Registros' }]
+      : []),
     { href: `/${subdomain}/settings/users`, label: 'Equipo' }
   ];
 
