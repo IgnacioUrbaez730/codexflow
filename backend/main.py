@@ -6,7 +6,7 @@ import boto3
 from botocore.client import Config
 from datetime import datetime, timedelta, timezone
 import json
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, Query
 from pydantic import BaseModel
 from supabase import create_client, Client, ClientOptions
 from typing import List, Optional, Dict, Any
@@ -1347,16 +1347,63 @@ async def update_record_metadata(
         print(f"Error in update_record_metadata: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+def format_export_datetime(dt_str: Optional[str]) -> str:
+    if not dt_str:
+        return ""
+    try:
+        clean_str = dt_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean_str)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        if len(dt_str) >= 16 and "T" in dt_str:
+            return dt_str[:16].replace("T", " ")
+        return dt_str
+
+def clean_column_name(key: str) -> str:
+    if not key:
+        return ""
+    return key.replace("_", " ").replace("-", " ").strip().title()
+
+def extract_dynamic_columns(folios: list, template_fields: Optional[list]) -> tuple[list[str], list[str]]:
+    if template_fields:
+        field_keys = []
+        field_labels = []
+        for f in template_fields:
+            f_id = f.get("id") or f.get("key") or f.get("name") or ""
+            f_label = f.get("label") or f.get("name") or f_id
+            field_keys.append(f_id)
+            field_labels.append(f_label)
+        return field_keys, field_labels
+    else:
+        unique_keys = set()
+        for folio in folios:
+            meta = folio.get("metadata") or {}
+            if isinstance(meta, dict):
+                for k in meta.keys():
+                    unique_keys.add(k)
+        keys = sorted(list(unique_keys))
+        labels = [clean_column_name(k) for k in keys]
+        return keys, labels
+
 @app.get("/api/v1/records/export")
-async def export_records_csv(
+async def export_records(
     batch_id: Optional[str] = None,
     search: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    format: str = Query("xlsx", regex="^(xlsx|csv)$"),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     if auth.get("role") == "digitizer":
         raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para exportar registros")
+
+    if format not in ["xlsx", "csv"]:
+        raise HTTPException(status_code=400, detail="Formato de exportación no soportado. Use 'xlsx' o 'csv'.")
+
     try:
         tenant_id = auth["tenant_id"]
         user_client = auth["user_client"]
@@ -1388,7 +1435,7 @@ async def export_records_csv(
         else:
             folios = raw_folios
 
-        template_fields = []
+        template_fields = None
         if batch_id:
             try:
                 batch_res = supabase.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
@@ -1404,83 +1451,122 @@ async def export_records_csv(
             except Exception as t_err:
                 print(f"Error fetching template fields for export: {t_err}")
 
-        def iter_csv():
-            output = io.StringIO()
-            yield "\ufeff"
+        # Extract dynamic columns & labels
+        meta_keys, meta_labels = extract_dynamic_columns(folios, template_fields if batch_id else None)
+        base_headers = ["ID Folio", "Archivo", "Lote", "Fecha Verificación", "Estado"]
+        headers = base_headers + meta_labels
 
-            if batch_id and template_fields:
-                field_keys = []
-                headers = ["ID Folio", "Archivo", "Fecha Verificación", "Estado"]
-                for f in template_fields:
-                    f_id = f.get("id") or f.get("key") or f.get("name")
-                    f_label = f.get("label") or f.get("name") or f_id
-                    field_keys.append((f_id, f_label))
-                    headers.append(f_label)
+        # Build data rows
+        data_rows = []
+        for folio in folios:
+            r2_url = folio.get("r2_url") or ""
+            file_name = r2_url.split("/")[-1] if r2_url else ""
+            batch_info = folio.get("batches") or {}
+            batch_rel_id = batch_info.get("id") or folio.get("batch_id")
+            batch_name = f"Lote {str(batch_rel_id)[:8]}" if batch_rel_id else ""
+            verified_formatted = format_export_datetime(folio.get("verified_at"))
+            status = folio.get("status", "")
 
-                writer = csv.writer(output)
+            row = [
+                folio.get("id", ""),
+                file_name,
+                batch_name,
+                verified_formatted,
+                status
+            ]
+
+            meta = folio.get("metadata") or {}
+            for k in meta_keys:
+                val = meta.get(k)
+                if val is None and template_fields:
+                    # Fallback check by label if key wasn't matched
+                    for f in template_fields:
+                        if (f.get("id") == k or f.get("key") == k or f.get("name") == k):
+                            label = f.get("label")
+                            if label and label in meta:
+                                val = meta.get(label)
+                            break
+                row.append(str(val) if val is not None else "")
+
+            data_rows.append(row)
+
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+        # CSV format
+        if format == "csv":
+            def iter_csv():
+                output = io.StringIO()
+                output.write("\ufeffsep=;\r\n")
+                writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
                 writer.writerow(headers)
+                for r in data_rows:
+                    writer.writerow(r)
                 yield output.getvalue()
-                output.seek(0)
-                output.truncate(0)
 
-                for folio in folios:
-                    r2_url = folio.get("r2_url") or ""
-                    file_name = r2_url.split("/")[-1] if r2_url else ""
-                    row = [
-                        folio.get("id", ""),
-                        file_name,
-                        folio.get("verified_at", ""),
-                        folio.get("status", "")
-                    ]
-                    meta = folio.get("metadata") or {}
-                    for f_id, f_label in field_keys:
-                        val = meta.get(f_id)
-                        if val is None:
-                            val = meta.get(f_label, "")
-                        row.append(str(val) if val is not None else "")
-                    writer.writerow(row)
-                    yield output.getvalue()
-                    output.seek(0)
-                    output.truncate(0)
-            else:
-                headers = ["ID Folio", "Archivo", "Lote", "Fecha Verificación", "Estado", "Metadatos"]
-                writer = csv.writer(output)
-                writer.writerow(headers)
-                yield output.getvalue()
-                output.seek(0)
-                output.truncate(0)
+            filename = f"registros_export_{timestamp_str}.csv"
+            return StreamingResponse(
+                iter_csv(),
+                media_type="text/csv; charset=utf-8",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            )
 
-                for folio in folios:
-                    r2_url = folio.get("r2_url") or ""
-                    file_name = r2_url.split("/")[-1] if r2_url else ""
-                    batch_info = folio.get("batches") or {}
-                    batch_rel_id = batch_info.get("id") or folio.get("batch_id")
-                    batch_name = f"Lote {str(batch_rel_id)[:8]}" if batch_rel_id else ""
-                    meta = folio.get("metadata") or {}
-                    row = [
-                        folio.get("id", ""),
-                        file_name,
-                        batch_name,
-                        folio.get("verified_at", ""),
-                        folio.get("status", ""),
-                        json.dumps(meta, ensure_ascii=False)
-                    ]
-                    writer.writerow(row)
-                    yield output.getvalue()
-                    output.seek(0)
-                    output.truncate(0)
+        # XLSX format
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Registros CodexFlow"
 
-        filename = f"registros_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
-        return StreamingResponse(
-            iter_csv(),
-            media_type="text/csv; charset=utf-8",
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        thin_side = Side(style="thin", color="E2E8F0")
+        cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+        ws.row_dimensions[1].height = 28
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+            cell.border = cell_border
+
+        data_font = Font(name="Calibri", size=10)
+        data_alignment = Alignment(vertical="center")
+        for r in data_rows:
+            ws.append(r)
+            row_idx = ws.max_row
+            ws.row_dimensions[row_idx].height = 20
+            for cell in ws[row_idx]:
+                cell.font = data_font
+                cell.alignment = data_alignment
+                cell.border = cell_border
+
+        # Auto-adjust column widths
+        for col in ws.columns:
+            max_len = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                val_str = str(cell.value or "")
+                if len(val_str) > max_len:
+                    max_len = len(val_str)
+            ws.column_dimensions[col_letter].width = max(14, min(50, max_len + 3))
+
+        bio = io.BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+
+        filename = f"registros_export_{timestamp_str}.xlsx"
+        return Response(
+            content=bio.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        print(f"Error in export_records_csv: {str(e)}")
+        print(f"Error in export_records: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 class DigitizerMetricsData(BaseModel):
     user_id: str

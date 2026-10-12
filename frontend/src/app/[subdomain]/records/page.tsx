@@ -19,7 +19,10 @@ import {
   AlertTriangle,
   FileText,
   Play,
-  RotateCcw
+  RotateCcw,
+  ChevronDown,
+  FileSpreadsheet,
+  Loader2
 } from "lucide-react";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
@@ -81,6 +84,9 @@ export default function RecordsPage() {
   const [totalPages, setTotalPages] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [exportingFormat, setExportingFormat] = useState<"xlsx" | "csv" | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
 
   // Modal & Viewer States
@@ -213,14 +219,32 @@ export default function RecordsPage() {
     fetchRecords();
   }, [fetchRecords]);
 
-  // CSV Export handler
-  const handleExportCSV = async () => {
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    }
+    if (isExportMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isExportMenuOpen]);
+
+  // Multi-format Export handler
+  const handleExport = async (format: "xlsx" | "csv") => {
     setExporting(true);
+    setExportingFormat(format);
+    setIsExportMenuOpen(false);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
       const params = new URLSearchParams();
+      params.append("format", format);
       if (selectedBatch) params.append("batch_id", selectedBatch);
       if (debouncedSearch) params.append("search", debouncedSearch);
       if (startDate) params.append("start_date", startDate);
@@ -233,14 +257,14 @@ export default function RecordsPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Error generando el archivo CSV");
+        throw new Error(`Error generando el archivo ${format.toUpperCase()}`);
       }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `registros_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `registros_export_${new Date().toISOString().slice(0, 10)}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -250,8 +274,10 @@ export default function RecordsPage() {
       alert(err.message || "Error al exportar");
     } finally {
       setExporting(false);
+      setExportingFormat(null);
     }
   };
+
 
   // Open Edit / View Modal
   const handleOpenDetail = (record: RecordData) => {
@@ -465,14 +491,58 @@ export default function RecordsPage() {
             Consulta, filtra y edita folios digitalizados y verificados.
           </p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          disabled={exporting || loading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 shadow-xs cursor-pointer"
-        >
-          <Download className="w-4 h-4" />
-          {exporting ? "Exportando..." : "Exportar CSV"}
-        </button>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            onClick={() => setIsExportMenuOpen((prev) => !prev)}
+            disabled={exporting || loading}
+            aria-expanded={isExportMenuOpen}
+            aria-haspopup="true"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 shadow-xs cursor-pointer"
+          >
+            {exporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Exportando ({exportingFormat?.toUpperCase()})...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>Exportar Registros</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExportMenuOpen ? "rotate-180" : ""}`} />
+              </>
+            )}
+          </button>
+
+          {isExportMenuOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+              <button
+                onClick={() => handleExport("xlsx")}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer text-left"
+              >
+                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-medium">Exportar a Excel (.xlsx)</div>
+                  <div className="text-xs text-gray-400">Libro nativo con formato</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleExport("csv")}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer text-left"
+              >
+                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-medium">Exportar a CSV (.csv)</div>
+                  <div className="text-xs text-gray-400">Delimitado por ';' (Excel)</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filters Bar */}

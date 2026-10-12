@@ -9,3 +9,4 @@ pytest
 moto
 pytesseract
 Pillow
+openpyxl>=3.1.2
