@@ -1794,6 +1794,62 @@ async def update_record_metadata(
         print(f"Error in update_record_metadata: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/v1/records/{folio_id}")
+async def delete_record(
+    folio_id: str,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    try:
+        role = auth.get("role")
+        if role == "digitizer":
+            raise HTTPException(
+                status_code=403,
+                detail="Permiso denegado: rol no autorizado para eliminar registros"
+            )
+
+        caller_id = auth["user_id"]
+        tenant_id = auth["tenant_id"]
+
+        folio_res = (
+            supabase.table("folios")
+            .select("id, tenant_id, batches(uploaded_by)")
+            .eq("id", folio_id)
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
+
+        if not folio_res.data:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        folio = folio_res.data[0]
+
+        if role == "archivist":
+            batch_rel = folio.get("batches") or {}
+            uploaded_by = batch_rel.get("uploaded_by") if isinstance(batch_rel, dict) else None
+            if uploaded_by != caller_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Permiso denegado: solo puedes eliminar registros de lotes que subiste"
+                )
+
+        # Eliminar datos asociados en training_data
+        supabase.table("training_data").delete().eq("folio_id", folio_id).eq("tenant_id", tenant_id).execute()
+
+        # Eliminar el folio
+        res = supabase.table("folios").delete().eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+        return {
+            "status": "success",
+            "message": "Registro eliminado exitosamente",
+            "id": folio_id
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error deleting record {folio_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter

@@ -22,7 +22,8 @@ import {
   RotateCcw,
   ChevronDown,
   FileSpreadsheet,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
@@ -96,6 +97,9 @@ export default function RecordsPage() {
   const [saving, setSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [releasingId, setReleasingId] = useState<string | null>(null);
+  const [recordToDelete, setRecordToDelete] = useState<RecordData | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Readability filters and magnifier hook
   const {
@@ -454,6 +458,41 @@ export default function RecordsPage() {
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!recordToDelete) return;
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("No hay sesión activa");
+      }
+
+      const res = await fetch(`/api/v1/records/${recordToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.detail || "Error al eliminar registro");
+      }
+
+      setRecordToDelete(null);
+      if (isModalOpen) {
+        handleCloseModal();
+      }
+      await fetchRecords();
+    } catch (err: any) {
+      setDeleteError(err.message || "No se pudo eliminar el registro");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Fields to render in edit form
   const getEditableFields = () => {
     if (templateFields && templateFields.length > 0) {
@@ -753,6 +792,13 @@ export default function RecordsPage() {
                           >
                             <Eye className="w-3.5 h-3.5" />
                             Ver / Editar
+                          </button>
+                          <button
+                            onClick={() => setRecordToDelete(r)}
+                            title="Eliminar registro"
+                            className="inline-flex items-center justify-center p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1058,21 +1104,32 @@ export default function RecordsPage() {
                   </div>
 
                   {/* Form Actions Footer */}
-                  <div className="p-4 bg-gray-950 border-t border-gray-800 flex justify-end gap-3">
+                  <div className="p-4 bg-gray-950 border-t border-gray-800 flex items-center justify-between gap-3">
                     <button
                       type="button"
-                      onClick={handleCloseModal}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                      onClick={() => setRecordToDelete(selectedRecord)}
+                      disabled={saving}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-950/80 hover:bg-red-900 border border-red-800/80 text-red-300 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
                     >
-                      Cancelar
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      Eliminar Registro
                     </button>
-                    <button
-                      type="submit"
-                      disabled={saving || selectedRecord.status === "in_progress"}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
-                    >
-                      {saving ? "Guardando..." : "Guardar Cambios"}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCloseModal}
+                        className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saving || selectedRecord.status === "in_progress"}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
+                      >
+                        {saving ? "Guardando..." : "Guardar Cambios"}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -1080,6 +1137,71 @@ export default function RecordsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmación de Eliminación */}
+      {recordToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 animate-fade-in backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-red-100 text-red-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-gray-900">
+                  ¿Eliminar este registro?
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  ¿Estás seguro de que deseas eliminar permanentemente el folio con archivo{" "}
+                  <strong className="text-gray-900">
+                    {recordToDelete.file_name || recordToDelete.id.slice(0, 8)}
+                  </strong>
+                  ? Esta acción borrará sus metadatos indexados y no se puede deshacer.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordToDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Sí, Eliminar Registro</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
