@@ -1857,3 +1857,28 @@ async def get_digitizer_metrics(auth: Dict[str, Any] = Depends(get_auth_context)
         print(f"Error in get_digitizer_metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class DemoRequestCreate(BaseModel):
+    full_name: str
+    organization: str
+    email: str
+    phone: Optional[str] = None
+    message: Optional[str] = None
+
+@app.post("/api/v1/demo-requests")
+async def create_demo_request(payload: DemoRequestCreate):
+    try:
+        data = {
+            "full_name": payload.full_name,
+            "organization": payload.organization,
+            "email": payload.email,
+            "phone": payload.phone,
+            "message": payload.message,
+            "status": "pending"
+        }
+        res = supabase.table("demo_requests").insert(data).execute()
+        return {"status": "success", "data": res.data if res else None}
+    except Exception as e:
+        print(f"Error creating demo request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error saving demo request")
+
+
