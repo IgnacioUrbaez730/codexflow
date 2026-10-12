@@ -17,77 +17,80 @@ R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "codexflow")
 def get_s3_client():
     return boto3.client(
         's3',
-        endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+        endpoint_url=os.getenv("R2_ENDPOINT_URL"),
         aws_access_key_id=R2_ACCESS_KEY_ID,
         aws_secret_access_key=R2_SECRET_ACCESS_KEY,
         region_name="auto"
     )
 
 def process_file(folio_id: str, file_key: str):
-    s3 = get_s3_client()
-    
-    with tempfile.TemporaryDirectory() as temp_dir:
-        file_name = os.path.basename(file_key)
-        local_path = os.path.join(temp_dir, file_name)
+    try:
+        s3 = get_s3_client()
         
-        s3.download_file(R2_BUCKET_NAME, file_key, local_path)
-        
-        ext = file_name.split('.')[-1].lower()
-        pages_to_process = []
-        if ext == 'pdf':
-            pages = convert_from_path(local_path)
-            for i, page in enumerate(pages):
-                page_path = os.path.join(temp_dir, f"page_{i}.jpg")
-                page.save(page_path, 'JPEG')
-                pages_to_process.append(page_path)
-        else:
-            pages_to_process.append(local_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_name = os.path.basename(file_key)
+            local_path = os.path.join(temp_dir, file_name)
             
-        dzi_base_url = ""
-        all_ocr_data = []
+            s3.download_file(R2_BUCKET_NAME, file_key, local_path)
             
-        for i, page_path in enumerate(pages_to_process):
-            dzi_name = f"{folio_id}_{i}"
-            dzi_path = os.path.join(temp_dir, dzi_name)
-            
-            img = pyvips.Image.new_from_file(page_path)
-            img.dzsave(dzi_path)
-            
-            dzi_file_path = f"{dzi_path}.dzi"
-            s3.upload_file(dzi_file_path, R2_BUCKET_NAME, f"dzi/{dzi_name}.dzi")
-            
-            dzi_files_dir = f"{dzi_path}_files"
-            for root, dirs, files in os.walk(dzi_files_dir):
-                for f in files:
-                    local_f = os.path.join(root, f)
-                    rel_path = os.path.relpath(local_f, temp_dir)
-                    s3.upload_file(local_f, R2_BUCKET_NAME, f"dzi/{rel_path}".replace("\\", "/"))
-            
-            if i == 0:
-                dzi_base_url = f"dzi/{dzi_name}.dzi"
+            ext = file_name.split('.')[-1].lower()
+            pages_to_process = []
+            if ext == 'pdf':
+                pages = convert_from_path(local_path)
+                for i, page in enumerate(pages):
+                    page_path = os.path.join(temp_dir, f"page_{i}.jpg")
+                    page.save(page_path, 'JPEG')
+                    pages_to_process.append(page_path)
+            else:
+                pages_to_process.append(local_path)
                 
-            # Extraer texto y bounding boxes con Tesseract
-            from backend.ai_engine import extract_text_and_boxes
-            ocr_results = extract_text_and_boxes(page_path)
-            all_ocr_data.extend(ocr_results)
-            
-        # Obtener template_schema para el mapeo
-        template_schema = {}
-        try:
-            folio_res = supabase.table("folios").select("template_id").eq("id", folio_id).execute()
-            if folio_res.data and folio_res.data[0].get("template_id"):
-                template_id = folio_res.data[0]["template_id"]
-                template_res = supabase.table("templates").select("schema").eq("id", template_id).execute()
-                if template_res.data and template_res.data[0].get("schema"):
-                    template_schema = template_res.data[0]["schema"]
-        except Exception as e:
-            print(f"Error fetching template schema: {e}")
-            
-        from backend.ai_engine import map_ocr_to_template
-        ai_predictions = map_ocr_to_template(all_ocr_data, template_schema)
+            dzi_base_url = ""
+            all_ocr_data = []
                 
-        supabase.table("folios").update({
-            "status": "processed",
-            "r2_url": dzi_base_url,
-            "ai_predictions": ai_predictions
-        }).eq("id", folio_id).execute()
+            for i, page_path in enumerate(pages_to_process):
+                dzi_name = f"{folio_id}_{i}"
+                dzi_path = os.path.join(temp_dir, dzi_name)
+                
+                img = pyvips.Image.new_from_file(page_path)
+                img.dzsave(dzi_path)
+                
+                dzi_file_path = f"{dzi_path}.dzi"
+                s3.upload_file(dzi_file_path, R2_BUCKET_NAME, f"dzi/{dzi_name}.dzi")
+                
+                dzi_files_dir = f"{dzi_path}_files"
+                for root, dirs, files in os.walk(dzi_files_dir):
+                    for f in files:
+                        local_f = os.path.join(root, f)
+                        rel_path = os.path.relpath(local_f, temp_dir)
+                        s3.upload_file(local_f, R2_BUCKET_NAME, f"dzi/{rel_path}".replace("\\", "/"))
+                
+                if i == 0:
+                    dzi_base_url = f"dzi/{dzi_name}.dzi"
+                    
+                # Extraer texto y bounding boxes con Tesseract
+                from backend.ai_engine import extract_text_and_boxes
+                ocr_results = extract_text_and_boxes(page_path)
+                all_ocr_data.extend(ocr_results)
+                
+            # Obtener template_schema para el mapeo
+            template_schema = {}
+            try:
+                folio_res = supabase.table("folios").select("template_id").eq("id", folio_id).execute()
+                if folio_res.data and folio_res.data[0].get("template_id"):
+                    template_id = folio_res.data[0]["template_id"]
+                    template_res = supabase.table("templates").select("schema").eq("id", template_id).execute()
+                    if template_res.data and template_res.data[0].get("schema"):
+                        template_schema = template_res.data[0]["schema"]
+            except Exception as e:
+                print(f"Error fetching template schema: {e}")
+                
+            from backend.ai_engine import map_ocr_to_template
+            ai_predictions = map_ocr_to_template(all_ocr_data, template_schema)
+                    
+            supabase.table("folios").update({
+                "status": "pending",
+                "r2_url": dzi_base_url,
+                "ai_predictions": ai_predictions
+            }).eq("id", folio_id).execute()
+    except Exception as e:
+        print(f"Error processing file {file_key} for folio {folio_id}: {e}")

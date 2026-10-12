@@ -118,8 +118,6 @@ async def async_process_file(folio_id: str, file_key: str, user_client: Client, 
             await loop.run_in_executor(None, process_file, folio_id, file_key)
         except Exception as file_e:
             print(f"Error processing file {file_key} for folio {folio_id}: {file_e}")
-            supabase.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
-            supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
 async def process_batch_task(batch_id: str, files: List[str], user_client: Client, tenant_id: str):
     try:
@@ -146,6 +144,7 @@ async def process_batch_task(batch_id: str, files: List[str], user_client: Clien
         if tasks:
             await asyncio.gather(*tasks)
         
+        supabase.table("batches").update({"status": "ready"}).eq("id", batch_id).execute()
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")
         supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
