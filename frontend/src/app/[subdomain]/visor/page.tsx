@@ -667,40 +667,43 @@ export default function VisorDual() {
         </div>
 
         {folio.view_url ? (
-          <div
-            className="relative flex items-center justify-center max-h-full max-w-full"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-              transformOrigin: "center center",
-              transition: isDragging ? "none" : "transform 0.1s ease-out",
-            }}
-          >
-            <img
-              ref={imgRef}
-              src={folio.view_url}
-              alt="Documento para indexar"
-              draggable={false}
+          <>
+            <div
+              className="relative flex items-center justify-center max-h-full max-w-full"
               style={{
-                cursor: magnifier.active ? "crosshair" : isDragging ? "grabbing" : "grab",
-                filter: filterString,
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                transformOrigin: "center center",
+                transition: isDragging ? "none" : "transform 0.1s ease-out",
               }}
-              className="max-h-full max-w-full object-contain rounded shadow-lg block"
-            />
+            >
+              <img
+                ref={imgRef}
+                src={folio.view_url}
+                alt="Documento para indexar"
+                draggable={false}
+                style={{
+                  cursor: magnifier.active ? "crosshair" : isDragging ? "grabbing" : "grab",
+                  filter: filterString,
+                }}
+                className="max-h-full max-w-full object-contain rounded shadow-lg block"
+              />
 
-            {/* AI Vector Bounding Boxes Overlay */}
-            <AIOverlayLayer
-              predictions={aiPredictions}
-              activeFieldKey={activeFieldKey}
-              visible={showAIOverlay}
-              rotation={0}
-              imageWidth={imgRef.current?.naturalWidth || imgRef.current?.clientWidth || 800}
-              imageHeight={imgRef.current?.naturalHeight || imgRef.current?.clientHeight || 1000}
-              onSelectPrediction={handleSelectPredictionBox}
-            />
+              {/* AI Vector Bounding Boxes Overlay */}
+              <AIOverlayLayer
+                predictions={aiPredictions}
+                activeFieldKey={activeFieldKey}
+                visible={showAIOverlay}
+                rotation={0}
+                imageWidth={imgRef.current?.naturalWidth || imgRef.current?.clientWidth || 800}
+                imageHeight={imgRef.current?.naturalHeight || imgRef.current?.clientHeight || 1000}
+                onSelectPrediction={handleSelectPredictionBox}
+              />
+            </div>
 
             {/* Interactive Magnifier Floating Lens */}
             <MagnifierLens
               imageSrc={folio.view_url}
+              imgRef={imgRef}
               magnifier={magnifier}
               filterString={filterString}
               imageRect={imageRect}
@@ -709,7 +712,7 @@ export default function VisorDual() {
               activeFieldKey={activeFieldKey}
               showOverlay={showAIOverlay}
             />
-          </div>
+          </>
         ) : (
           <div className="text-gray-400">Cargando documento...</div>
         )}

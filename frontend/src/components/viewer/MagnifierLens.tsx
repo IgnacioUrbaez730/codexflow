@@ -8,7 +8,8 @@ interface MagnifierLensProps {
   imageSrc: string;
   magnifier: MagnifierState;
   filterString: string;
-  imageRect: DOMRect | null;
+  imageRect?: DOMRect | null;
+  imgRef?: React.RefObject<HTMLImageElement | null>;
   rotation?: number;
   predictions?: AIPrediction[];
   activeFieldKey?: string | null;
@@ -20,23 +21,26 @@ export function MagnifierLens({
   magnifier,
   filterString,
   imageRect,
+  imgRef,
   rotation = 0,
   predictions = [],
   activeFieldKey = null,
   showOverlay = true,
 }: MagnifierLensProps) {
-  if (!magnifier.active || !magnifier.visible || !imageRect || !imageSrc) {
+  const currentRect = imgRef?.current ? imgRef.current.getBoundingClientRect() : imageRect;
+
+  if (!magnifier.active || !magnifier.visible || !currentRect || !imageSrc) {
     return null;
   }
 
-  const relX = magnifier.cursorPos.x - imageRect.left;
-  const relY = magnifier.cursorPos.y - imageRect.top;
+  const relX = magnifier.cursorPos.x - currentRect.left;
+  const relY = magnifier.cursorPos.y - currentRect.top;
 
   const isInside =
     relX >= 0 &&
-    relX <= imageRect.width &&
+    relX <= currentRect.width &&
     relY >= 0 &&
-    relY <= imageRect.height;
+    relY <= currentRect.height;
 
   if (!isInside) {
     return null;
@@ -45,8 +49,8 @@ export function MagnifierLens({
   const lensSize = 180;
   const lensRadius = lensSize / 2; // 90px
 
-  const magnifiedWidth = imageRect.width * magnifier.zoom;
-  const magnifiedHeight = imageRect.height * magnifier.zoom;
+  const magnifiedWidth = currentRect.width * magnifier.zoom;
+  const magnifiedHeight = currentRect.height * magnifier.zoom;
   const offsetX = -relX * magnifier.zoom + lensRadius;
   const offsetY = -relY * magnifier.zoom + lensRadius;
 

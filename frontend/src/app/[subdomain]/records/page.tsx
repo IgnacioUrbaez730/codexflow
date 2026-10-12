@@ -944,6 +944,7 @@ export default function RecordsPage() {
 
                       <MagnifierLens
                         imageSrc={selectedRecord.view_url}
+                        imgRef={modalImgRef}
                         magnifier={magnifier}
                         filterString={filterString}
                         imageRect={modalImageRect}
