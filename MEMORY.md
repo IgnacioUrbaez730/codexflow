@@ -71,3 +71,8 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
     - **Ergonomía:** Centrado suave al tabular si `zoom <= 2.5x` (preserva cámara en zoom alto). Atajos `Alt + A` (toggle capa), `Alt + C` (centrado forzado), clic en caja para insertar texto.
     - **Active Learning:** Registro de discrepancias en `training_data` al guardar con `Ctrl + Enter` y tarjeta de métricas de precisión en el Dashboard.
 
+20. **Autoguardado Local y Recuperación Offline (Spec 010 - Principio 4 de la Constitución):**
+    - **Persistencia en Tiempo Real:** Debounce de 500ms que respalda el formulario y el estado del visor (zoom, pan x/y, rotación) bajo la clave aislada `'codexflow_draft_[tenant]_[folio]'` con purga automática (TTL 7 días).
+    - **Feedback y Modo Offline:** Badge visual animado "Guardado local" con tooltip de hora, y banner persistente superior ante pérdida de red (`navigator.onLine === false`) informando que el trabajo sigue a salvo.
+    - **Restauración y Descarte:** Recuperación automática al reabrir el folio con toast flotante de 4 segundos. Botón y atajo `Alt + D` para descartar borrador con confirmación. Limpieza inmediata al guardar con éxito (`Ctrl + Enter`) o al dudar (`Ctrl + Espacio`).
+
