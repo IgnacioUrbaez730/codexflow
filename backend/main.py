@@ -1095,12 +1095,69 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
         }
         if request.status == "completed":
             update_data["verified_at"] = datetime.now(timezone.utc).isoformat()
+        elif request.status == "revision":
+            update_data["locked_at"] = None
             
         res = user_client.table("folios").update(update_data).eq("id", request.folio_id).execute()
         
         return {"status": "success", "data": res.data[0]}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/folios/revision")
+async def get_revision_folios(auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+        
+        try:
+            res = user_client.table("folios").select(
+                "*, batches(id, template_id, uploaded_by, templates(name))"
+            ).eq("tenant_id", tenant_id).eq("status", "revision").order("created_at", desc=True).execute()
+        except Exception:
+            res = supabase.table("folios").select(
+                "*, batches(id, template_id, uploaded_by, templates(name))"
+            ).eq("tenant_id", tenant_id).eq("status", "revision").order("created_at", desc=True).execute()
+            
+        folios = res.data or []
+        
+        if auth.get("role") == "archivist":
+            user_id = auth.get("user_id")
+            folios = [
+                f for f in folios
+                if f.get("batches") and f["batches"].get("uploaded_by") == user_id
+            ]
+            
+        return {"status": "success", "data": folios}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error in get_revision_folios: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/batches")
+async def get_batches(auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+        
+        try:
+            query = user_client.table("batches").select(
+                "id, template_id, status, created_at, templates(name)"
+            ).eq("tenant_id", tenant_id)
+        except Exception:
+            query = supabase.table("batches").select(
+                "id, template_id, status, created_at, templates(name)"
+            ).eq("tenant_id", tenant_id)
+            
+        if auth.get("role") == "archivist":
+            query = query.eq("uploaded_by", auth["user_id"])
+            
+        res = query.order("created_at", desc=True).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error in get_batches: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class UpdateRecordMetadataRequest(BaseModel):
