@@ -163,6 +163,7 @@ export default function VisorDual() {
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
   const [showAIOverlay, setShowAIOverlay] = useState(false);
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
+  const [isSavingServer, setIsSavingServer] = useState(false);
 
   // Image viewer interaction states
   const [zoom, setZoom] = useState(1);
@@ -677,7 +678,7 @@ export default function VisorDual() {
   }, [discardDraft, template, folio, initializeFormWithAI]);
 
   const handleSave = useCallback(async () => {
-    if (!folio) return;
+    if (!folio || isSavingServer) return;
 
     // Validate required fields
     if (template && template.fields) {
@@ -692,37 +693,14 @@ export default function VisorDual() {
       }
     }
 
-    const feedbackData = buildFeedbackPayload();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    setIsSavingServer(true);
+    try {
+      const feedbackData = buildFeedbackPayload();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const res = await fetch("/api/v1/folios/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token}`,
-      },
-      body: JSON.stringify({
-        folio_id: folio.id,
-        metadata: formData,
-        status: "completed",
-        feedback: feedbackData,
-      }),
-    });
-
-    const resData = await res.json();
-    if (resData.status !== "success") {
-      alert("Error: " + (resData.detail || "No se pudo guardar el folio"));
-      return;
-    }
-
-    // Clear local draft after successful save
-    clearDraft();
-
-    // Also dispatch silent background feedback if needed
-    if (feedbackData.length > 0) {
-      fetch("/api/v1/ai/feedback", {
+      const res = await fetch("/api/v1/folios/save", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -730,18 +708,50 @@ export default function VisorDual() {
         },
         body: JSON.stringify({
           folio_id: folio.id,
-          items: feedbackData,
+          metadata: formData,
+          status: "completed",
+          feedback: feedbackData,
         }),
-      }).catch((e) => console.warn("Background AI feedback failed:", e));
-    }
+      });
 
-    if (folioIdParam) {
-      router.push(`/${subdomain}/ingest`);
-    } else {
-      fetchNextFolio();
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok || resData.status !== "success") {
+        alert("Error: " + (resData.detail || "No se pudo guardar el folio"));
+        return;
+      }
+
+      // Clear local draft after successful save
+      clearDraft();
+
+      // Also dispatch silent background feedback if needed
+      if (feedbackData.length > 0) {
+        fetch("/api/v1/ai/feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({
+            folio_id: folio.id,
+            items: feedbackData,
+          }),
+        }).catch((e) => console.warn("Background AI feedback failed:", e));
+      }
+
+      if (folioIdParam) {
+        router.push(`/${subdomain}/ingest`);
+      } else {
+        await fetchNextFolio();
+      }
+    } catch (err: any) {
+      console.error("Error saving folio:", err);
+      alert("Error de conexión al guardar el folio. Tus cambios siguen respaldados localmente.");
+    } finally {
+      setIsSavingServer(false);
     }
   }, [
     folio,
+    isSavingServer,
     formData,
     template,
     folioIdParam,
@@ -754,33 +764,57 @@ export default function VisorDual() {
   ]);
 
   const handleMarkRevision = useCallback(async () => {
-    if (!folio) return;
+    if (!folio || isSavingServer) return;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    await fetch("/api/v1/folios/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token}`,
-      },
-      body: JSON.stringify({
-        folio_id: folio.id,
-        metadata: formData,
-        status: "revision",
-      }),
-    });
+    setIsSavingServer(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const res = await fetch("/api/v1/folios/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          folio_id: folio.id,
+          metadata: formData,
+          status: "revision",
+        }),
+      });
 
-    // Clear local draft after marking revision
-    clearDraft();
+      const resData = await res.json().catch(() => ({}));
+      if (!res.ok || resData.status !== "success") {
+        alert("Error: " + (resData.detail || "No se pudo marcar el folio como dudoso"));
+        return;
+      }
 
-    if (folioIdParam) {
-      router.push(`/${subdomain}/ingest`);
-    } else {
-      fetchNextFolio();
+      // Clear local draft after marking revision
+      clearDraft();
+
+      if (folioIdParam) {
+        router.push(`/${subdomain}/ingest`);
+      } else {
+        await fetchNextFolio();
+      }
+    } catch (err: any) {
+      console.error("Error marking folio as revision:", err);
+      alert("Error de conexión al marcar el folio como dudoso.");
+    } finally {
+      setIsSavingServer(false);
     }
-  }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase, clearDraft]);
+  }, [
+    folio,
+    isSavingServer,
+    formData,
+    folioIdParam,
+    router,
+    subdomain,
+    fetchNextFolio,
+    supabase,
+    clearDraft,
+  ]);
 
   // Global Keyboard Shortcuts (Alt+A, Alt+C, Alt+D, Ctrl+Enter, Ctrl+Space)
   useEffect(() => {
@@ -1090,15 +1124,17 @@ export default function VisorDual() {
           <div className="flex space-x-4">
             <button
               onClick={handleMarkRevision}
-              className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50 transition-colors"
+              disabled={isSavingServer}
+              className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Marcar Dudoso
             </button>
             <button
               onClick={handleSave}
-              className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors"
+              disabled={isSavingServer}
+              className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Guardar y Continuar
+              {isSavingServer ? "Guardando..." : "Guardar y Continuar"}
             </button>
           </div>
         </div>

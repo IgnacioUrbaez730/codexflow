@@ -78,6 +78,7 @@ export function safeGetDraft<T = Record<string, any>>(key: string): LocalDraft<T
 
 /**
  * Safely saves a draft to localStorage.
+ * Removes any previous drafts for other folios so only the currently active folio draft is retained.
  * Handles QuotaExceededError by executing preventive purgeExpiredDrafts() and retrying.
  */
 export function safeSaveDraft<T = Record<string, any>>(key: string, draft: LocalDraft<T>): boolean {
@@ -86,6 +87,17 @@ export function safeSaveDraft<T = Record<string, any>>(key: string, draft: Local
   const serialized = JSON.stringify(draft);
 
   try {
+    const otherDraftKeys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith(DRAFT_STORAGE_PREFIX) && k !== key) {
+        otherDraftKeys.push(k);
+      }
+    }
+    for (const k of otherDraftKeys) {
+      window.localStorage.removeItem(k);
+    }
+
     window.localStorage.setItem(key, serialized);
     return true;
   } catch (error: any) {

@@ -56,10 +56,22 @@ export function useLocalAutosave<T = Record<string, any>>({
   const initialMountRef = useRef<boolean>(true);
   const isRestoringRef = useRef<boolean>(false);
   const currentKeyRef = useRef<string | null>(null);
+  const lastSavedHashRef = useRef<string | null>(null);
+  const latestPayloadRef = useRef({ formData, viewerState, modifiedFields });
+  latestPayloadRef.current = { formData, viewerState, modifiedFields };
 
   const storageKey =
     tenantId && folioId ? buildDraftStorageKey(tenantId, folioId) : null;
   currentKeyRef.current = storageKey;
+
+  const serializedForm = JSON.stringify(formData || {});
+  const serializedMod = JSON.stringify(modifiedFields || []);
+  const serializedViewer = JSON.stringify({
+    z: viewerState?.zoom ?? 1,
+    x: Math.round(viewerState?.panX ?? viewerState?.pan?.x ?? 0),
+    y: Math.round(viewerState?.panY ?? viewerState?.pan?.y ?? 0),
+    r: viewerState?.rotation ?? 0,
+  });
 
   // Cleanup toast timer
   const dismissToast = useCallback(() => {
@@ -78,6 +90,7 @@ export function useLocalAutosave<T = Record<string, any>>({
     } catch (e) {
       console.warn("Failed to clear draft from localStorage:", e);
     }
+    lastSavedHashRef.current = null;
     setHasDraft(false);
     setStatus("idle");
   }, []);
@@ -110,6 +123,7 @@ export function useLocalAutosave<T = Record<string, any>>({
 
     // Purge drafts older than 7 days
     purgeExpiredDrafts();
+    lastSavedHashRef.current = null;
 
     const existingDraft = safeGetDraft<T>(storageKey);
 
@@ -152,12 +166,25 @@ export function useLocalAutosave<T = Record<string, any>>({
       return;
     }
 
+    const currentHash = `${storageKey}::${serializedForm}::${serializedMod}::${serializedViewer}`;
+
     if (isRestoringRef.current) {
+      lastSavedHashRef.current = currentHash;
+      return;
+    }
+
+    // Only autosave when the user has actually modified at least one field
+    if (!modifiedFields || modifiedFields.length === 0) {
       return;
     }
 
     // Do not save empty/uninitialized form state on first mount if there are no values
-    if (Object.keys(formData as any || {}).length === 0) {
+    if (Object.keys((latestPayloadRef.current.formData as any) || {}).length === 0) {
+      return;
+    }
+
+    // Skip if serialized content has not changed since last save
+    if (lastSavedHashRef.current === currentHash) {
       return;
     }
 
@@ -169,19 +196,26 @@ export function useLocalAutosave<T = Record<string, any>>({
 
     debounceTimerRef.current = setTimeout(() => {
       const now = Date.now();
+      const {
+        formData: latestForm,
+        viewerState: latestViewer,
+        modifiedFields: latestMod,
+      } = latestPayloadRef.current;
+
       const draft: LocalDraft<T> = {
         version: 1,
         tenantId,
         folioId,
-        formData,
-        modifiedFields,
-        viewerState,
+        formData: latestForm,
+        modifiedFields: latestMod,
+        viewerState: latestViewer,
         updatedAt: now,
         timestamp: now,
       };
 
       const success = safeSaveDraft(storageKey, draft);
       if (success) {
+        lastSavedHashRef.current = currentHash;
         setStatus("saved");
         setHasDraft(true);
         setLastSavedAt(now);
@@ -195,7 +229,16 @@ export function useLocalAutosave<T = Record<string, any>>({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [formData, viewerState, modifiedFields, storageKey, tenantId, folioId, debounceMs]);
+  }, [
+    serializedForm,
+    serializedMod,
+    serializedViewer,
+    modifiedFields?.length,
+    storageKey,
+    tenantId,
+    folioId,
+    debounceMs,
+  ]);
 
   // Window beforeunload safety guard
   useEffect(() => {

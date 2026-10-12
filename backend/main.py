@@ -510,12 +510,48 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         user_client = auth["user_client"]
         tenant_id = auth["tenant_id"]
-        res = supabase.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
-        
-        if not res.data or len(res.data) == 0:
-            return {"status": "success", "data": None}
-            
-        folio_data = res.data[0]
+
+        folio_data = None
+        try:
+            in_prog_res = (
+                supabase.table("folios")
+                .select("*")
+                .eq("tenant_id", tenant_id)
+                .eq("status", "in_progress")
+                .order("locked_at", desc=True)
+                .execute()
+            )
+            if (
+                isinstance(in_prog_res.data, list)
+                and len(in_prog_res.data) > 0
+                and isinstance(in_prog_res.data[0], dict)
+                and in_prog_res.data[0].get("status") == "in_progress"
+            ):
+                folio_data = in_prog_res.data[0]
+                now_iso = datetime.now(timezone.utc).isoformat()
+                supabase.table("folios").update({"locked_at": now_iso}).eq(
+                    "id", folio_data["id"]
+                ).eq("tenant_id", tenant_id).execute()
+                folio_data["locked_at"] = now_iso
+        except Exception as check_err:
+            print(f"Notice checking existing in_progress folios: {check_err}")
+
+        if not folio_data:
+            res = supabase.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
+            if not res.data or len(res.data) == 0:
+                return {"status": "success", "data": None}
+            folio_data = res.data[0]
+
+        active_folio_id = folio_data.get("id")
+        if active_folio_id:
+            try:
+                supabase.table("folios").update({
+                    "status": "pending",
+                    "locked_at": None
+                }).eq("tenant_id", tenant_id).eq("status", "in_progress").neq("id", active_folio_id).execute()
+            except Exception as cleanup_err:
+                print(f"Notice releasing extra in_progress folios: {cleanup_err}")
+
         ensure_folio_ai_predictions(folio_data, tenant_id)
 
         if folio_data.get("r2_url"):
@@ -566,6 +602,15 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
             raise HTTPException(status_code=404, detail="Folio no encontrado")
 
         folio_data = res.data[0]
+
+        try:
+            supabase.table("folios").update({
+                "status": "pending",
+                "locked_at": None
+            }).eq("tenant_id", tenant_id).eq("status", "in_progress").neq("id", folio_id).execute()
+        except Exception as cleanup_err:
+            print(f"Notice releasing other in_progress folios in get_folio_by_id: {cleanup_err}")
+
         ensure_folio_ai_predictions(folio_data, tenant_id)
 
         if folio_data.get("r2_url"):
@@ -1405,39 +1450,81 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
         tenant_id = auth["tenant_id"]
         user_id = auth.get("user_id")
         
-        # Verify folio exists and get template
-        folio_res = user_client.table("folios").select("*, batches(template_id)").eq("id", request.folio_id).execute()
+        # Verify folio exists and belongs to tenant
+        folio_res = (
+            supabase.table("folios")
+            .select("*, batches(template_id)")
+            .eq("id", request.folio_id)
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
         if not folio_res.data:
             raise HTTPException(status_code=404, detail="Folio not found")
             
         folio = folio_res.data[0]
-        template_id = folio["batches"]["template_id"]
-        
-        tpl_res = user_client.table("templates").select("fields").eq("id", template_id).execute()
-        if not tpl_res.data:
-            raise HTTPException(status_code=404, detail="Template not found")
+        template_id = None
+        batches_rel = folio.get("batches")
+        if isinstance(batches_rel, dict):
+            template_id = batches_rel.get("template_id")
+        elif isinstance(batches_rel, list) and len(batches_rel) > 0 and isinstance(batches_rel[0], dict):
+            template_id = batches_rel[0].get("template_id")
             
-        fields = tpl_res.data[0].get("fields", [])
+        if not template_id and folio.get("batch_id"):
+            batch_res = (
+                supabase.table("batches")
+                .select("template_id")
+                .eq("id", folio["batch_id"])
+                .eq("tenant_id", tenant_id)
+                .execute()
+            )
+            if batch_res.data and len(batch_res.data) > 0:
+                template_id = batch_res.data[0].get("template_id")
+                
+        fields = []
+        if template_id:
+            tpl_res = (
+                supabase.table("templates")
+                .select("fields")
+                .eq("id", template_id)
+                .eq("tenant_id", tenant_id)
+                .execute()
+            )
+            if tpl_res.data and len(tpl_res.data) > 0:
+                fields = tpl_res.data[0].get("fields") or []
         
         if request.status == "completed":
             # Validate required fields
             for f in fields:
-                if f.get("required"):
-                    val = request.metadata.get(f["id"])
+                if isinstance(f, dict) and f.get("required"):
+                    val = (
+                        request.metadata.get(f.get("id"))
+                        if f.get("id") in request.metadata
+                        else request.metadata.get(f.get("name"))
+                        if f.get("name") in request.metadata
+                        else request.metadata.get(f.get("label"))
+                    )
                     if val is None or str(val).strip() == "":
-                        raise HTTPException(status_code=400, detail=f"Field {f['id']} is required")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"El campo '{f.get('label') or f.get('name') or f.get('id')}' es obligatorio"
+                        )
         
         # Update folio
         update_data = {
             "metadata": request.metadata,
-            "status": request.status
+            "status": request.status,
+            "locked_at": None
         }
         if request.status == "completed":
             update_data["verified_at"] = datetime.now(timezone.utc).isoformat()
-        elif request.status == "revision":
-            update_data["locked_at"] = None
             
-        res = user_client.table("folios").update(update_data).eq("id", request.folio_id).execute()
+        res = (
+            supabase.table("folios")
+            .update(update_data)
+            .eq("id", request.folio_id)
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
         
         # Record feedback asynchronously/safely without blocking error
         if request.feedback and len(request.feedback) > 0:
@@ -1455,11 +1542,12 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
                         "corrected_by_user_id": user_id
                     })
                 if feedback_rows:
-                    user_client.table("training_data").insert(feedback_rows).execute()
+                    supabase.table("training_data").insert(feedback_rows).execute()
             except Exception as fb_err:
                 print(f"Warning: could not insert active learning feedback: {fb_err}")
 
-        return {"status": "success", "data": res.data[0]}
+        saved_row = res.data[0] if (res and res.data) else {"id": request.folio_id, **update_data}
+        return {"status": "success", "data": saved_row}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
