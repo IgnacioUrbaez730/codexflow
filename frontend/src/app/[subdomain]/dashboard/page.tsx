@@ -71,13 +71,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <h1 className="text-2xl font-bold mb-4">Dashboard del Tenant: {params.subdomain}</h1>
-      <p className="mb-8">Bienvenido a tu espacio aislado de trabajo.</p>
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">Dashboard del Tenant: {params.subdomain}</h1>
+      <p className="mb-8 text-gray-700">Bienvenido a tu espacio aislado de trabajo.</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* KPI: Funnel */}
         <section className="p-6 bg-white rounded shadow-md border border-gray-100">
-          <h2 className="text-xl font-semibold mb-4">Embudo: Subidos vs Verificados</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Embudo: Subidos vs Verificados</h2>
           <div className="flex justify-between items-center bg-gray-50 p-4 rounded">
             <div className="text-center">
               <p className="text-gray-500 text-sm">Subidos</p>
@@ -100,7 +100,7 @@ export default function DashboardPage() {
 
         {/* KPI: Quota */}
         <section className="p-6 bg-white rounded shadow-md border border-gray-100">
-          <h2 className="text-xl font-semibold mb-4">Consumo de Cuotas (Freemium)</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Consumo de Cuotas (Freemium)</h2>
           <div className="mb-2 flex justify-between text-sm font-medium">
             <span className="text-gray-600">{data?.quota.used_this_week} folios usados</span>
             <span className="text-gray-600">{data?.quota.weekly_limit} folios límite</span>
@@ -124,7 +124,7 @@ export default function DashboardPage() {
 
       {/* Gráfica de Tendencia */}
       <section className="p-6 bg-white rounded shadow-md mb-8 border border-gray-100">
-        <h2 className="text-xl font-semibold mb-4">Tendencia Global de Productividad (Últimos Días)</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Tendencia Global de Productividad (Últimos Días)</h2>
         <div className="h-64 flex items-end gap-2 border-b-2 border-gray-200 pb-2 pt-8">
           {data?.productivity.map((item) => {
             const maxCount = Math.max(...(data?.productivity.map(p => p.folios) || [0]));

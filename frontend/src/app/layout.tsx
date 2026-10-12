@@ -40,7 +40,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className="scroll-smooth">
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+      <body className="bg-gray-50 text-gray-900 antialiased selection:bg-blue-600 selection:text-white">
         {children}
       </body>
     </html>

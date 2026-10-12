@@ -19,7 +19,7 @@ function SubdomainContent({
   const { isCollapsed, toggleMobile } = useSidebar();
 
   return (
-    <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50">
+    <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50 text-gray-900">
       {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-gray-900 text-white z-30 sticky top-0 shadow-md">
         <div className="flex items-center gap-3">
