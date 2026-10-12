@@ -59,3 +59,8 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
     - **Enum de Folio Corregido:** Se añadió `'in_progress'` a `folio_status` en PostgreSQL para permitir el bloqueo concurrente temporal de folios en la cola global.
     - **Worker Resiliente:** El procesamiento en segundo plano (`worker.py` y `main.py`) no degrada folios a `failed` si fallan procesos secundarios de OCR, preservando el documento en `pending` para los digitadores humanos.
     - **Controles Interactivos de Ergonomía:** Se implementó en el visor una barra flotante con zoom in/out (hasta 400%), rotación en 90°, arrastre (pan) con clic sostenido, zoom con rueda del ratón y botón de restablecer.
+
+18. **Exportación Multi-Formato de Registros (Spec 008):**
+    - **Soporte Dual Excel (.xlsx) y CSV (.csv):** Integración de `openpyxl` en backend FastAPI para emitir archivos XLSX nativos con estilos corporativos (cabecera `#1E293B`, bordes `#E2E8F0`, autoajuste de ancho) y CSV optimizado con delimitador `;`, BOM UTF-8 y directiva `sep=;\r\n` para apertura perfecta en Excel en español.
+    - **Desglose Dinámico de Metadatos:** En vista global sin lote filtrado, los campos indexados se analizan dinámicamente y se proyectan en columnas individuales tituladas (e.g. "Nombre Padre", "Fecha Nacimiento") en lugar de un JSON agrupado en una sola celda.
+    - **Interfaz Frontend:** Dropdown interactivo en `/[subdomain]/records` con opciones para descargar en formato Excel o CSV y estados de carga.
