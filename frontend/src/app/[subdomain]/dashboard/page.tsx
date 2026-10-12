@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { AIDashboardMetrics } from '../../../components/indexing/AIDashboardMetrics';
 
 interface DashboardData {
   productivity: { date: string; folios: number }[];
@@ -13,6 +14,7 @@ export default function DashboardPage() {
   const params = useParams() as { subdomain: string };
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -28,6 +30,7 @@ export default function DashboardPage() {
         const headers: Record<string, string> = {};
         if (session?.access_token) {
           headers['Authorization'] = `Bearer ${session.access_token}`;
+          setSessionToken(session.access_token);
         } else {
           headers['Authorization'] = 'Bearer DUMMY';
         }
@@ -112,6 +115,11 @@ export default function DashboardPage() {
             </span>
           </div>
         </section>
+      </div>
+
+      {/* Tarjeta Resumen de Precisión de IA (Admin y Archivista) */}
+      <div className="mb-8">
+        <AIDashboardMetrics token={sessionToken} />
       </div>
 
       {/* Gráfica de Tendencia */}

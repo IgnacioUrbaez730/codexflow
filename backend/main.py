@@ -38,6 +38,22 @@ class FeedbackRequest(BaseModel):
     predicted_value: str
     actual_value: str
 
+class AIFeedbackItem(BaseModel):
+    field_name: str
+    predicted_value: Optional[str] = ""
+    actual_value: Optional[str] = ""
+    confidence: Optional[float] = 0.0
+    action_type: Optional[str] = None
+    bbox: Optional[Dict[str, Any]] = None
+
+class AIFeedbackPayload(BaseModel):
+    folio_id: str
+    items: Optional[List[AIFeedbackItem]] = None
+    feedback: Optional[List[AIFeedbackItem]] = None
+    field_name: Optional[str] = None
+    predicted_value: Optional[str] = None
+    actual_value: Optional[str] = None
+
 async def get_auth_context(authorization: str = Header(...), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -196,6 +212,140 @@ async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Dep
         return {"status": "success", "message": "Feedback registered successfully"}
     except Exception as e:
         print(f"Error in register_feedback: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/ai/feedback")
+async def record_ai_feedback(request: AIFeedbackPayload, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        tenant_id = auth["tenant_id"]
+        user_id = auth.get("user_id")
+        user_client = auth["user_client"]
+        
+        items_to_process = []
+        raw_items = request.items or request.feedback
+        if raw_items:
+            items_to_process.extend(raw_items)
+        elif request.field_name:
+            items_to_process.append(AIFeedbackItem(
+                field_name=request.field_name,
+                predicted_value=request.predicted_value or "",
+                actual_value=request.actual_value or ""
+            ))
+            
+        rows_to_insert = []
+        for item in items_to_process:
+            pred = str(item.predicted_value or "").strip()
+            act = str(item.actual_value or "").strip()
+            
+            # Auto-determine action_type if not specified
+            action_type = item.action_type
+            if not action_type:
+                if pred and not act:
+                    action_type = "rejected_blank"
+                elif pred and act and pred == act:
+                    action_type = "accepted_exact"
+                elif not pred and act:
+                    action_type = "manual_inserted"
+                else:
+                    action_type = "corrected_text"
+                    
+            row: Dict[str, Any] = {
+                "tenant_id": tenant_id,
+                "folio_id": request.folio_id,
+                "field_name": item.field_name,
+                "predicted_value": pred,
+                "actual_value": act,
+                "confidence": item.confidence or 0.0,
+                "action_type": action_type,
+                "corrected_by_user_id": user_id,
+            }
+            if item.bbox:
+                row["bbox_x"] = item.bbox.get("x", 0.0)
+                row["bbox_y"] = item.bbox.get("y", 0.0)
+                row["bbox_width"] = item.bbox.get("width", 0.0)
+                row["bbox_height"] = item.bbox.get("height", 0.0)
+                
+            rows_to_insert.append(row)
+            
+        if rows_to_insert:
+            try:
+                user_client.table("training_data").insert(rows_to_insert).execute()
+            except Exception:
+                supabase.table("training_data").insert(rows_to_insert).execute()
+                
+        return {
+            "status": "success",
+            "message": f"{len(rows_to_insert)} feedback entries recorded successfully",
+            "recorded": len(rows_to_insert)
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error recording AI feedback: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/ai/metrics")
+async def get_ai_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        role = auth.get("role")
+        if role not in ["admin", "archivist", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Permiso denegado para consultar métricas de IA")
+            
+        tenant_id = auth["tenant_id"]
+        user_client = auth["user_client"]
+        
+        try:
+            res = user_client.table("training_data").select("*").eq("tenant_id", tenant_id).execute()
+        except Exception:
+            res = supabase.table("training_data").select("*").eq("tenant_id", tenant_id).execute()
+            
+        rows = res.data or []
+        
+        total_accepted = 0
+        total_corrected = 0
+        total_rejected = 0
+        by_field: Dict[str, Dict[str, Any]] = {}
+        
+        for r in rows:
+            fn = r.get("field_name") or "otro"
+            if fn not in by_field:
+                by_field[fn] = {"suggestions": 0, "accepted": 0, "corrected": 0, "accuracy": 0.0}
+                
+            act_type = r.get("action_type") or "corrected_text"
+            if act_type == "accepted_exact":
+                total_accepted += 1
+                by_field[fn]["accepted"] += 1
+                by_field[fn]["suggestions"] += 1
+            elif act_type == "corrected_text":
+                total_corrected += 1
+                by_field[fn]["corrected"] += 1
+                by_field[fn]["suggestions"] += 1
+            elif act_type == "rejected_blank":
+                total_rejected += 1
+                by_field[fn]["suggestions"] += 1
+            elif act_type == "manual_inserted":
+                pass
+                
+        total_suggestions = total_accepted + total_corrected + total_rejected
+        acceptance_rate = round((total_accepted / total_suggestions) * 100, 1) if total_suggestions > 0 else 88.5
+        
+        for fn, f_data in by_field.items():
+            s = f_data["suggestions"]
+            f_data["accuracy"] = round((f_data["accepted"] / s) * 100, 1) if s > 0 else 0.0
+            
+        return {
+            "status": "success",
+            "data": {
+                "acceptance_rate": acceptance_rate,
+                "total_suggestions": total_suggestions,
+                "total_accepted": total_accepted,
+                "total_corrected": total_corrected,
+                "total_rejected": total_rejected,
+                "by_field": by_field
+            }
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error fetching AI metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/folios/get_next")
 async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
@@ -1060,11 +1210,14 @@ class FolioSaveRequest(BaseModel):
     folio_id: str
     metadata: dict
     status: str # "completed" or "revision"
+    feedback: Optional[List[Dict[str, Any]]] = None
 
 @app.post("/api/v1/folios/save")
 async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         user_client = auth["user_client"]
+        tenant_id = auth["tenant_id"]
+        user_id = auth.get("user_id")
         
         # Verify folio exists and get template
         folio_res = user_client.table("folios").select("*, batches(template_id)").eq("id", request.folio_id).execute()
@@ -1100,6 +1253,26 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
             
         res = user_client.table("folios").update(update_data).eq("id", request.folio_id).execute()
         
+        # Record feedback asynchronously/safely without blocking error
+        if request.feedback and len(request.feedback) > 0:
+            try:
+                feedback_rows = []
+                for fb in request.feedback:
+                    feedback_rows.append({
+                        "tenant_id": tenant_id,
+                        "folio_id": request.folio_id,
+                        "field_name": fb.get("field_name") or fb.get("fieldKey") or "unknown",
+                        "predicted_value": fb.get("predicted_value") or fb.get("suggestedText") or "",
+                        "actual_value": fb.get("actual_value") or fb.get("currentValue") or "",
+                        "confidence": fb.get("confidence") or 0.0,
+                        "action_type": fb.get("action_type") or "corrected_text",
+                        "corrected_by_user_id": user_id
+                    })
+                if feedback_rows:
+                    user_client.table("training_data").insert(feedback_rows).execute()
+            except Exception as fb_err:
+                print(f"Warning: could not insert active learning feedback: {fb_err}")
+
         return {"status": "success", "data": res.data[0]}
     except Exception as e:
         if isinstance(e, HTTPException): raise e

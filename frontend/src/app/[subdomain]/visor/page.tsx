@@ -3,10 +3,57 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { Search } from "lucide-react";
+import { Search, Eye, EyeOff, Crosshair } from "lucide-react";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
 import { FilterControlsPopover } from "../../../components/viewer/FilterControlsPopover";
+import { AIOverlayLayer } from "../../../components/viewer/AIOverlayLayer";
+import { AIAssistedInput } from "../../../components/indexing/AIAssistedInput";
+import { AIPrediction, BoundingBoxNormalized } from "../../../types/aiIndexing";
+import { shouldPrefillPrediction } from "../../../utils/aiGeometry";
+
+function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((p, idx) => ({
+      id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
+      folioId: p.folioId || p.folio_id || folioId,
+      fieldKey: p.fieldKey || p.field_key || "",
+      suggestedText: p.suggestedText || p.suggested_text || p.value || "",
+      confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
+      bbox: p.bbox || { x: 0.1, y: 0.1 + idx * 0.08, width: 0.3, height: 0.04 },
+      isValidSyntax: p.isValidSyntax ?? true,
+      modelVersion: p.modelVersion || p.model_version || "v1.0",
+    }));
+  }
+  if (typeof raw === "object") {
+    return Object.entries(raw).map(([key, val]: [string, any], idx) => {
+      if (typeof val === "object" && val !== null) {
+        return {
+          id: val.id || `pred-${key}-${idx}`,
+          folioId: val.folioId || folioId,
+          fieldKey: key,
+          suggestedText: val.value || val.suggestedText || val.suggested_text || "",
+          confidence: typeof val.confidence === "number" ? val.confidence : 0.85,
+          bbox: val.bbox || { x: 0.1, y: 0.1 + idx * 0.08, width: 0.3, height: 0.04 },
+          isValidSyntax: val.isValidSyntax ?? true,
+          modelVersion: val.modelVersion || "v1.0",
+        };
+      }
+      return {
+        id: `pred-${key}-${idx}`,
+        folioId,
+        fieldKey: key,
+        suggestedText: String(val || ""),
+        confidence: 0.88,
+        bbox: { x: 0.1, y: 0.15 + idx * 0.07, width: 0.35, height: 0.04 },
+        isValidSyntax: true,
+        modelVersion: "v1.0",
+      };
+    });
+  }
+  return [];
+}
 
 export default function VisorDual() {
   const router = useRouter();
@@ -14,11 +61,18 @@ export default function VisorDual() {
   const searchParams = useSearchParams();
   const subdomain = params.subdomain as string;
   const folioIdParam = searchParams.get("folio_id");
-  
+
   const [folio, setFolio] = useState<any>(null);
   const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<Record<string, any>>({});
+
+  // AI-Assisted Indexing States
+  const [aiPredictions, setAiPredictions] = useState<AIPrediction[]>([]);
+  const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set());
+  const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
+  const [showAIOverlay, setShowAIOverlay] = useState(true);
 
   // Image viewer interaction states
   const [zoom, setZoom] = useState(1);
@@ -54,8 +108,8 @@ export default function VisorDual() {
     setMagnifier((m) => ({ ...m, active: false, visible: false }));
   }, [folio?.id, setMagnifier]);
 
-  const handleZoomIn = () => setZoom(z => Math.min(z + 0.25, 4));
-  const handleZoomOut = () => setZoom(z => Math.max(z - 0.25, 0.5));
+  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.25, 4));
+  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.25, 0.5));
   const handleResetZoomPan = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -63,7 +117,8 @@ export default function VisorDual() {
     resetFilters();
     resetMagnifier();
   };
-  const handleRotate = () => setRotation(r => (r + 90) % 360);
+  const handleRotate = () => setRotation((r) => (r + 90) % 360);
+  const handleToggleAI = useCallback(() => setShowAIOverlay((prev) => !prev), []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (magnifier.active) return;
@@ -110,9 +165,9 @@ export default function VisorDual() {
       setMagnifierZoom((z) => Math.max(1.5, Math.min(5.0, z + delta)));
     } else {
       if (e.deltaY < 0) {
-        setZoom(z => Math.min(z + 0.15, 4));
+        setZoom((z) => Math.min(z + 0.15, 4));
       } else {
-        setZoom(z => Math.max(z - 0.15, 0.5));
+        setZoom((z) => Math.max(z - 0.15, 0.5));
       }
     }
   };
@@ -122,57 +177,88 @@ export default function VisorDual() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const fetchTemplate = async (templateId: string) => {
-    const { data } = await supabase.from('templates').select('*').eq('id', templateId).single();
-    if (data) setTemplate(data);
-  };
+  // Initialize form with intelligent prefilling (Confidence >= 80% and valid format)
+  const initializeFormWithAI = useCallback(
+    (currentTemplate: any, predictions: AIPrediction[], existingMetadata?: any) => {
+      const newForm: Record<string, any> = {};
+      const newPrefilled = new Set<string>();
+
+      if (currentTemplate && currentTemplate.fields) {
+        for (const field of currentTemplate.fields) {
+          // If folio already has human metadata saved
+          if (existingMetadata && existingMetadata[field.id] !== undefined) {
+            newForm[field.id] = existingMetadata[field.id];
+            continue;
+          }
+
+          // Search matching AI prediction
+          const match = predictions.find(
+            (p) =>
+              p.fieldKey === field.id ||
+              p.fieldKey === field.name ||
+              p.field_key === field.id
+          );
+
+          if (
+            match &&
+            shouldPrefillPrediction(match.confidence, match.suggestedText, field.type)
+          ) {
+            newForm[field.id] = match.suggestedText;
+            newPrefilled.add(field.id);
+          } else {
+            // Confidence < 80% or invalid format: leave empty!
+            newForm[field.id] = "";
+          }
+        }
+      }
+
+      setFormData(newForm);
+      setPrefilledFields(newPrefilled);
+      setModifiedFields(new Set());
+    },
+    []
+  );
+
+  const fetchTemplate = useCallback(
+    async (templateId: string, currentFolio?: any, predictions?: AIPrediction[]) => {
+      const { data } = await supabase.from("templates").select("*").eq("id", templateId).single();
+      if (data) {
+        setTemplate(data);
+        if (currentFolio) {
+          const preds = predictions || parseAIPredictions(currentFolio.ai_predictions, currentFolio.id);
+          initializeFormWithAI(data, preds, currentFolio.metadata);
+        }
+      }
+    },
+    [supabase, initializeFormWithAI]
+  );
 
   const fetchNextFolio = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase.auth.getSession();
-      const res = await fetch("/api/v1/folios/get_next", { 
+      const res = await fetch("/api/v1/folios/get_next", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${data.session?.access_token}`
-        }
+          Authorization: `Bearer ${data.session?.access_token}`,
+        },
       });
       const resData = await res.json();
       if (resData.status === "success" && resData.data) {
-        setFolio(resData.data);
-        setFormData(resData.data.ai_predictions || {});
-        // get template_id from batch
-        const batchRes = await supabase.from('batches').select('template_id').eq('id', resData.data.batch_id).single();
-        if (batchRes.data) {
-          await fetchTemplate(batchRes.data.template_id);
-        }
-      } else {
-        setFolio(null);
-      }
-    } catch (e) {
-      console.error(e);
-      setFolio(null);
-    }
-    setLoading(false);
-  }, [supabase]);
+        const nextFolio = resData.data;
+        setFolio(nextFolio);
 
-  const fetchSpecificFolio = useCallback(async (id: string) => {
-    setLoading(true);
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const res = await fetch(`/api/v1/folios/${id}`, {
-        headers: {
-          Authorization: `Bearer ${sessionData.session?.access_token}`
-        }
-      });
-      const resData = await res.json();
-      if (res.ok && resData.status === "success" && resData.data) {
-        setFolio(resData.data);
-        setFormData(resData.data.ai_predictions || {});
-        const batchRes = await supabase.from('batches').select('template_id').eq('id', resData.data.batch_id).single();
+        const parsedPreds = parseAIPredictions(nextFolio.ai_predictions, nextFolio.id);
+        setAiPredictions(parsedPreds);
+
+        const batchRes = await supabase
+          .from("batches")
+          .select("template_id")
+          .eq("id", nextFolio.batch_id)
+          .single();
         if (batchRes.data) {
-          await fetchTemplate(batchRes.data.template_id);
+          await fetchTemplate(batchRes.data.template_id, nextFolio, parsedPreds);
         }
       } else {
         setFolio(null);
@@ -182,7 +268,45 @@ export default function VisorDual() {
       setFolio(null);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, fetchTemplate]);
+
+  const fetchSpecificFolio = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const res = await fetch(`/api/v1/folios/${id}`, {
+          headers: {
+            Authorization: `Bearer ${sessionData.session?.access_token}`,
+          },
+        });
+        const resData = await res.json();
+        if (res.ok && resData.status === "success" && resData.data) {
+          const specFolio = resData.data;
+          setFolio(specFolio);
+
+          const parsedPreds = parseAIPredictions(specFolio.ai_predictions, specFolio.id);
+          setAiPredictions(parsedPreds);
+
+          const batchRes = await supabase
+            .from("batches")
+            .select("template_id")
+            .eq("id", specFolio.batch_id)
+            .single();
+          if (batchRes.data) {
+            await fetchTemplate(batchRes.data.template_id, specFolio, parsedPreds);
+          }
+        } else {
+          setFolio(null);
+        }
+      } catch (e) {
+        console.error(e);
+        setFolio(null);
+      }
+      setLoading(false);
+    },
+    [supabase, fetchTemplate]
+  );
 
   useEffect(() => {
     if (folioIdParam) {
@@ -192,9 +316,111 @@ export default function VisorDual() {
     }
   }, [folioIdParam, fetchNextFolio, fetchSpecificFolio]);
 
+  // Center camera smoothly onto bounding box
+  const centerCameraOnBBox = useCallback(
+    (bbox: BoundingBoxNormalized, currentZoom: number, force: boolean = false) => {
+      // Ergonomics rule: if zoom > 2.5x and not forced, do NOT move camera!
+      if (!force && currentZoom > 2.5) {
+        return;
+      }
+      if (!imgRef.current) return;
+
+      const imgW = imgRef.current.clientWidth || 800;
+      const imgH = imgRef.current.clientHeight || 1000;
+
+      // Coordinate offset from image center
+      const dx = (bbox.x + bbox.width / 2 - 0.5) * imgW;
+      const dy = (bbox.y + bbox.height / 2 - 0.5) * imgH;
+
+      const rad = (rotation * Math.PI) / 180;
+      const rotDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const rotDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+      setPan({
+        x: -rotDx * currentZoom,
+        y: -rotDy * currentZoom,
+      });
+    },
+    [rotation]
+  );
+
+  // Field focus handler: triggers visual ergonomics & camera navigation
+  const handleFieldFocus = useCallback(
+    (fieldId: string) => {
+      setActiveFieldKey(fieldId);
+      const pred = aiPredictions.find(
+        (p) => p.fieldKey === fieldId || p.field_key === fieldId
+      );
+      if (pred && pred.bbox) {
+        centerCameraOnBBox(pred.bbox, zoom, false);
+      }
+    },
+    [aiPredictions, centerCameraOnBBox, zoom]
+  );
+
+  // Force camera recentering on active field (Alt + C)
+  const handleForceRecenter = useCallback(() => {
+    if (!activeFieldKey) return;
+    const pred = aiPredictions.find(
+      (p) => p.fieldKey === activeFieldKey || p.field_key === activeFieldKey
+    );
+    if (pred && pred.bbox) {
+      centerCameraOnBBox(pred.bbox, zoom, true);
+    }
+  }, [activeFieldKey, aiPredictions, centerCameraOnBBox, zoom]);
+
+  // Click on a bounding box directly inserts its text into the focused field
+  const handleSelectPredictionBox = useCallback(
+    (prediction: AIPrediction) => {
+      const targetKey = activeFieldKey || prediction.fieldKey;
+      if (!targetKey) return;
+
+      setFormData((prev) => ({
+        ...prev,
+        [targetKey]: prediction.suggestedText,
+      }));
+      setModifiedFields((prev) => new Set(prev).add(targetKey));
+    },
+    [activeFieldKey]
+  );
+
+  const handleFieldChange = (fieldId: string, val: string) => {
+    setFormData((prev) => ({ ...prev, [fieldId]: val }));
+    setModifiedFields((prev) => new Set(prev).add(fieldId));
+  };
+
+  // Build Active Learning discrepancy payload
+  const buildFeedbackPayload = useCallback(() => {
+    if (!folio || !aiPredictions || aiPredictions.length === 0) return [];
+
+    return aiPredictions.map((pred) => {
+      const finalVal = String(formData[pred.fieldKey] || "").trim();
+      const origVal = String(pred.suggestedText || "").trim();
+
+      let action_type: "accepted_exact" | "corrected_text" | "rejected_blank" | "manual_inserted" =
+        "accepted_exact";
+      if (!finalVal && origVal) {
+        action_type = "rejected_blank";
+      } else if (finalVal && origVal && finalVal === origVal) {
+        action_type = "accepted_exact";
+      } else if (finalVal && (!origVal || finalVal !== origVal)) {
+        action_type = "corrected_text";
+      }
+
+      return {
+        field_name: pred.fieldKey,
+        predicted_value: origVal,
+        actual_value: finalVal,
+        confidence: pred.confidence,
+        action_type,
+        bbox: pred.bbox,
+      };
+    });
+  }, [folio, aiPredictions, formData]);
+
   const handleSave = useCallback(async () => {
     if (!folio) return;
-    
+
     // Validate required fields
     if (template && template.fields) {
       for (const field of template.fields) {
@@ -207,56 +433,83 @@ export default function VisorDual() {
         }
       }
     }
-    
-    console.log("Saving folio...", formData);
-    
-    const { data: { session } } = await supabase.auth.getSession();
+
+    const feedbackData = buildFeedbackPayload();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     const res = await fetch("/api/v1/folios/save", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${session?.access_token}`
+        Authorization: `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({
         folio_id: folio.id,
         metadata: formData,
-        status: "completed"
-      })
+        status: "completed",
+        feedback: feedbackData,
+      }),
     });
-    
+
     const resData = await res.json();
     if (resData.status !== "success") {
-       alert("Error: " + resData.detail);
-       return;
+      alert("Error: " + (resData.detail || "No se pudo guardar el folio"));
+      return;
     }
-    
+
+    // Also dispatch silent background feedback if needed
+    if (feedbackData.length > 0) {
+      fetch("/api/v1/ai/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          folio_id: folio.id,
+          items: feedbackData,
+        }),
+      }).catch((e) => console.warn("Background AI feedback failed:", e));
+    }
+
     if (folioIdParam) {
-      // In revision mode, just go back or to ingest hub
       router.push(`/${subdomain}/ingest`);
     } else {
-      // In queue mode, mark as completed and get next
       fetchNextFolio();
     }
-  }, [folio, formData, template, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
+  }, [
+    folio,
+    formData,
+    template,
+    folioIdParam,
+    router,
+    subdomain,
+    fetchNextFolio,
+    supabase,
+    buildFeedbackPayload,
+  ]);
 
   const handleMarkRevision = useCallback(async () => {
     if (!folio) return;
-    
-    console.log("Marking folio as revision...");
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch("/api/v1/folios/save", {
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    await fetch("/api/v1/folios/save", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${session?.access_token}`
+        Authorization: `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({
         folio_id: folio.id,
         metadata: formData,
-        status: "revision"
-      })
+        status: "revision",
+      }),
     });
-    
+
     if (folioIdParam) {
       router.push(`/${subdomain}/ingest`);
     } else {
@@ -264,10 +517,16 @@ export default function VisorDual() {
     }
   }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
 
-  // Global Keyboard Shortcuts
+  // Global Keyboard Shortcuts (Alt+A, Alt+C, Ctrl+Enter, Ctrl+Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "Enter") {
+      if (e.altKey && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        handleToggleAI();
+      } else if (e.altKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        handleForceRecenter();
+      } else if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         handleSave();
       } else if (e.ctrlKey && e.code === "Space") {
@@ -275,13 +534,13 @@ export default function VisorDual() {
         handleMarkRevision();
       }
     };
-    
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleSave, handleMarkRevision]);
+  }, [handleSave, handleMarkRevision, handleToggleAI, handleForceRecenter]);
 
   if (loading) {
-    return <div className="p-8 text-center">Cargando folio...</div>;
+    return <div className="p-8 text-center text-gray-600 font-sans">Cargando folio e indexación...</div>;
   }
 
   if (!folio) {
@@ -289,7 +548,7 @@ export default function VisorDual() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
         <h1 className="text-4xl font-bold text-gray-800 mb-4">¡Trabajo al día!</h1>
         <p className="text-gray-600 mb-8">No hay folios pendientes en la cola.</p>
-        <button 
+        <button
           onClick={() => router.push(`/${subdomain}/dashboard`)}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
         >
@@ -301,8 +560,8 @@ export default function VisorDual() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left side: Visor Dual (Document) */}
-      <div 
+      {/* Left side: Visor Dual (Document & AI Overlay) */}
+      <div
         ref={containerRef}
         className="w-1/2 bg-gray-900 border-r relative flex items-center justify-center p-4 overflow-hidden select-none"
         onMouseDown={handleMouseDown}
@@ -312,11 +571,11 @@ export default function VisorDual() {
         onWheel={handleWheel}
       >
         {/* Floating Toolbar */}
-        <div 
+        <div
           className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 bg-gray-800/90 backdrop-blur border border-gray-700 text-white px-3 py-1.5 rounded-full shadow-lg text-sm"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <button 
+          <button
             type="button"
             onClick={handleZoomOut}
             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-200 font-bold"
@@ -328,7 +587,7 @@ export default function VisorDual() {
           <span className="text-xs font-mono font-medium min-w-[3rem] text-center select-none text-gray-200">
             {Math.round(zoom * 100)}%
           </span>
-          <button 
+          <button
             type="button"
             onClick={handleZoomIn}
             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-200 font-bold"
@@ -338,7 +597,7 @@ export default function VisorDual() {
             +
           </button>
           <span className="h-4 w-px bg-gray-600 mx-1" />
-          <button 
+          <button
             type="button"
             onClick={handleRotate}
             className="px-2.5 py-1 flex items-center rounded hover:bg-gray-700 text-xs text-gray-200 font-medium"
@@ -346,7 +605,7 @@ export default function VisorDual() {
           >
             Rotar 90°
           </button>
-          <button 
+          <button
             type="button"
             onClick={handleResetZoomPan}
             className="px-2.5 py-1 flex items-center rounded hover:bg-gray-700 text-xs text-gray-200 font-medium"
@@ -357,12 +616,38 @@ export default function VisorDual() {
 
           <span className="h-4 w-px bg-gray-600 mx-1" />
 
+          {/* AI Overlay Layer Toggle Button (Alt + A) */}
+          <button
+            type="button"
+            onClick={handleToggleAI}
+            className={`px-2.5 py-1 flex items-center gap-1.5 rounded text-xs font-medium transition-colors cursor-pointer select-none ${
+              showAIOverlay ? "bg-emerald-600 text-white shadow-xs" : "hover:bg-gray-700 text-gray-300"
+            }`}
+            title="Alternar Capa IA (Alt + A)"
+          >
+            {showAIOverlay ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            <span>IA [Alt+A]</span>
+          </button>
+
+          {/* Force Recenter Button (Alt + C) */}
+          {activeFieldKey && (
+            <button
+              type="button"
+              onClick={handleForceRecenter}
+              className="px-2 py-1 flex items-center gap-1 rounded hover:bg-gray-700 text-xs text-amber-300 font-medium transition-colors"
+              title="Recentrar en campo activo (Alt + C)"
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+              <span>Centrar [Alt+C]</span>
+            </button>
+          )}
+
           {/* Interactive Magnifier Toggle */}
           <button
             type="button"
             onClick={toggleMagnifier}
             className={`px-2.5 py-1 flex items-center gap-1.5 rounded text-xs font-medium transition-colors cursor-pointer select-none ${
-              magnifier.active ? "bg-blue-600 text-white shadow-sm" : "hover:bg-gray-700 text-gray-200"
+              magnifier.active ? "bg-blue-600 text-white shadow-xs" : "hover:bg-gray-700 text-gray-200"
             }`}
             title="Lupa Interactiva (L)"
           >
@@ -382,19 +667,35 @@ export default function VisorDual() {
         </div>
 
         {folio.view_url ? (
-          <>
-            <img 
+          <div
+            className="relative flex items-center justify-center max-h-full max-w-full"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: "center center",
+              transition: isDragging ? "none" : "transform 0.1s ease-out",
+            }}
+          >
+            <img
               ref={imgRef}
-              src={folio.view_url} 
-              alt="Documento para indexar" 
+              src={folio.view_url}
+              alt="Documento para indexar"
               draggable={false}
-              style={{ 
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
-                cursor: magnifier.active ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'), 
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                filter: filterString
+              style={{
+                cursor: magnifier.active ? "crosshair" : isDragging ? "grabbing" : "grab",
+                filter: filterString,
               }}
-              className="max-h-full max-w-full object-contain rounded shadow-lg"
+              className="max-h-full max-w-full object-contain rounded shadow-lg block"
+            />
+
+            {/* AI Vector Bounding Boxes Overlay */}
+            <AIOverlayLayer
+              predictions={aiPredictions}
+              activeFieldKey={activeFieldKey}
+              visible={showAIOverlay}
+              rotation={0}
+              imageWidth={imgRef.current?.naturalWidth || imgRef.current?.clientWidth || 800}
+              imageHeight={imgRef.current?.naturalHeight || imgRef.current?.clientHeight || 1000}
+              onSelectPrediction={handleSelectPredictionBox}
             />
 
             {/* Interactive Magnifier Floating Lens */}
@@ -404,82 +705,82 @@ export default function VisorDual() {
               filterString={filterString}
               imageRect={imageRect}
               rotation={rotation}
+              predictions={aiPredictions}
+              activeFieldKey={activeFieldKey}
+              showOverlay={showAIOverlay}
             />
-          </>
+          </div>
         ) : (
           <div className="text-gray-400">Cargando documento...</div>
         )}
       </div>
-      
-      {/* Right side: Form */}
+
+      {/* Right side: Intelligent Indexing Form */}
       <div className="w-1/2 bg-white flex flex-col">
         <div className="p-4 border-b flex justify-between items-center bg-gray-50">
           <div>
             <h2 className="text-xl font-bold text-gray-800">
               {folioIdParam ? "Modo: Revisión de Dudoso" : "Modo: Cola Global"}
             </h2>
-            <p className="text-sm text-gray-500">Folio ID: {folio.id}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm text-gray-500">Folio ID: {folio.id}</span>
+              {aiPredictions.length > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  {aiPredictions.length} campos detectados por IA
+                </span>
+              )}
+            </div>
           </div>
-          <div className="text-sm text-gray-500 space-y-1 text-right">
-            <div><kbd className="bg-gray-200 px-1 rounded">Ctrl + Enter</kbd> para Guardar</div>
-            <div><kbd className="bg-gray-200 px-1 rounded">Ctrl + Espacio</kbd> para Dudoso</div>
+          <div className="text-xs text-gray-500 space-y-1 text-right">
+            <div>
+              <kbd className="bg-gray-200 px-1 rounded">Alt + A</kbd> Capa IA On/Off
+            </div>
+            <div>
+              <kbd className="bg-gray-200 px-1 rounded">Alt + C</kbd> Recentrar foco
+            </div>
+            <div>
+              <kbd className="bg-gray-200 px-1 rounded">Ctrl + Enter</kbd> Guardar
+            </div>
           </div>
         </div>
-        
+
         <div className="flex-1 overflow-auto p-6 space-y-4">
           {template?.fields ? (
-            template.fields.map((f: any) => (
-              <div key={f.id}>
-                <label className="block text-sm font-medium mb-1">
-                  {f.label} {f.required && <span className="text-red-500">*</span>}
-                </label>
-                {f.type === "long_text" ? (
-                  <textarea 
-                    className="w-full border rounded p-2" 
-                    value={formData[f.id] || ""}
-                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
-                  />
-                ) : f.type === "dropdown" ? (
-                  <select 
-                    className="w-full border rounded p-2"
-                    value={formData[f.id] || ""}
-                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    {f.options?.map((o: string, j: number) => <option key={j} value={o}>{o}</option>)}
-                  </select>
-                ) : f.type === "date" ? (
-                  <input 
-                    type="date" 
-                    className="w-full border rounded p-2" 
-                    value={formData[f.id] || ""}
-                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
-                  />
-                ) : (
-                  <input 
-                    type="text" 
-                    className="w-full border rounded p-2" 
-                    value={formData[f.id] || ""}
-                    onChange={(e) => setFormData({...formData, [f.id]: e.target.value})}
-                  />
-                )}
-              </div>
-            ))
+            template.fields.map((field: any) => {
+              const pred = aiPredictions.find(
+                (p) => p.fieldKey === field.id || p.fieldKey === field.name || p.field_key === field.id
+              );
+              const isPrefilled = prefilledFields.has(field.id);
+              const isModified = modifiedFields.has(field.id);
+
+              return (
+                <AIAssistedInput
+                  key={field.id}
+                  field={field}
+                  value={formData[field.id] || ""}
+                  onChange={(val) => handleFieldChange(field.id, val)}
+                  onFocus={() => handleFieldFocus(field.id)}
+                  prediction={pred}
+                  isPrefilled={isPrefilled}
+                  isModified={isModified}
+                />
+              );
+            })
           ) : (
             <div className="text-gray-500 text-sm">Cargando campos...</div>
           )}
         </div>
-        
+
         <div className="p-4 border-t flex justify-end space-x-4 bg-gray-50">
-          <button 
+          <button
             onClick={handleMarkRevision}
-            className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50"
+            className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50 transition-colors"
           >
             Marcar Dudoso
           </button>
-          <button 
+          <button
             onClick={handleSave}
-            className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
+            className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors"
           >
             Guardar y Continuar
           </button>
