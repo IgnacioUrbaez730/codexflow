@@ -17,7 +17,9 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
-  FileText
+  FileText,
+  Play,
+  RotateCcw
 } from "lucide-react";
 
 interface BatchOption {
@@ -84,6 +86,7 @@ export default function RecordsPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
 
   // Zoom / Pan / Rotate
   const [zoom, setZoom] = useState<number>(1);
@@ -243,6 +246,36 @@ export default function RecordsPage() {
     setIsModalOpen(false);
     setSelectedRecord(null);
     setSaveStatus(null);
+  };
+
+  const handleReleaseFolio = async (folioId: string) => {
+    if (!window.confirm("¿Deseas devolver este folio a la cola de indexación?")) {
+      return;
+    }
+    setReleasingId(folioId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sesión no válida");
+
+      const res = await fetch(`/api/v1/folios/${folioId}/release`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.detail || "Error al liberar el folio");
+      }
+      if (selectedRecord && selectedRecord.id === folioId) {
+        handleCloseModal();
+      }
+      await fetchRecords();
+    } catch (err: any) {
+      alert(err.message || "Error al liberar folio");
+    } finally {
+      setReleasingId(null);
+    }
   };
 
   // Zoom / Pan handlers
@@ -570,13 +603,36 @@ export default function RecordsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => handleOpenDetail(r)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-medium transition cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          Ver / Editar
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {r.status === "in_progress" && (
+                            <>
+                              <button
+                                onClick={() => router.push(`/${subdomain}/visor?folio_id=${r.id}`)}
+                                title="Continuar indexación en el Visor"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-medium transition cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                Continuar
+                              </button>
+                              <button
+                                onClick={() => handleReleaseFolio(r.id)}
+                                disabled={releasingId === r.id}
+                                title="Liberar folio y devolverlo a la cola"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {releasingId === r.id ? "Liberando..." : "Liberar"}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => handleOpenDetail(r)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-medium transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Ver / Editar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -750,12 +806,35 @@ export default function RecordsPage() {
                   <div className="flex-1 p-6 overflow-y-auto space-y-5">
                     {/* Status Alert if in_progress */}
                     {selectedRecord.status === "in_progress" && (
-                      <div className="p-3 bg-yellow-950/80 border border-yellow-800/80 rounded-xl flex items-start gap-2.5 text-yellow-200 text-xs">
-                        <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-                        <div>
-                          <strong className="block font-semibold">Documento bloqueado</strong>
-                          Este folio está actualmente en proceso de indexación. Las modificaciones están deshabilitadas
-                          hasta que sea completado.
+                      <div className="p-3 bg-yellow-950/80 border border-yellow-800/80 rounded-xl space-y-3 text-yellow-200 text-xs">
+                        <div className="flex items-start gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block font-semibold">Documento bloqueado</strong>
+                            Este folio está actualmente en proceso de indexación. Las modificaciones están deshabilitadas
+                            hasta que sea completado.
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1 border-t border-yellow-800/60">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              router.push(`/${subdomain}/visor?folio_id=${selectedRecord.id}`);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-semibold rounded-lg text-xs transition cursor-pointer shadow-xs"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            Abrir en Visor de Indexación
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReleaseFolio(selectedRecord.id)}
+                            disabled={releasingId === selectedRecord.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 font-medium rounded-lg text-xs transition cursor-pointer border border-gray-700 disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            {releasingId === selectedRecord.id ? "Liberando..." : "Liberar folio a la cola"}
+                          </button>
                         </div>
                       </div>
                     )}

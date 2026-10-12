@@ -106,11 +106,17 @@ export default function VisorDual() {
   const fetchSpecificFolio = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const { data } = await supabase.from('folios').select('*').eq('id', id).single();
-      if (data) {
-        setFolio(data);
-        setFormData(data.ai_predictions || {});
-        const batchRes = await supabase.from('batches').select('template_id').eq('id', data.batch_id).single();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const res = await fetch(`/api/v1/folios/${id}`, {
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`
+        }
+      });
+      const resData = await res.json();
+      if (res.ok && resData.status === "success" && resData.data) {
+        setFolio(resData.data);
+        setFormData(resData.data.ai_predictions || {});
+        const batchRes = await supabase.from('batches').select('template_id').eq('id', resData.data.batch_id).single();
         if (batchRes.data) {
           await fetchTemplate(batchRes.data.template_id);
         }
