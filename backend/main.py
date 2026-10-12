@@ -1481,3 +1481,120 @@ async def export_records_csv(
             raise e
         print(f"Error in export_records_csv: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class DigitizerMetricsData(BaseModel):
+    user_id: str
+    tenant_id: str
+    full_name: Optional[str] = None
+    folios_today: int
+    folios_last_7_days: int
+    folios_total_verified: int
+    last_activity_at: Optional[str] = None
+    recent_folios: Optional[List[Dict[str, Any]]] = None
+
+class DigitizerMetricsResponse(BaseModel):
+    status: str
+    data: DigitizerMetricsData
+
+@app.get("/api/v1/digitizer/metrics", response_model=DigitizerMetricsResponse)
+async def get_digitizer_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
+    tenant_id = auth["tenant_id"]
+    user_id = auth["user_id"]
+
+    try:
+        # Get full name from user_profiles if available
+        full_name = None
+        try:
+            prof_res = supabase.table("user_profiles").select("first_name, last_name").eq("user_id", user_id).execute()
+            if prof_res.data and len(prof_res.data) > 0:
+                fn = prof_res.data[0].get("first_name") or ""
+                ln = prof_res.data[0].get("last_name") or ""
+                combined = f"{fn} {ln}".strip()
+                if combined:
+                    full_name = combined
+        except Exception as p_err:
+            print(f"Error fetching profile in digitizer metrics: {p_err}")
+
+        # Timestamps for UTC intervals
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        seven_days_ago = now - timedelta(days=7)
+
+        # Query folios for this tenant
+        user_client = auth["user_client"]
+        res = user_client.table("folios").select(
+            "id, status, verified_at, updated_at, created_at, metadata, r2_url, batches(id, template_id, templates(name))"
+        ).eq("tenant_id", tenant_id).eq("status", "completed").order("verified_at", desc=True).execute()
+
+        folios = res.data or []
+
+        # Filter by user if folio has verified_by, transcribed_by, or metadata._verified_by
+        user_folios = []
+        for f in folios:
+            if f.get("verified_by") == user_id or f.get("transcribed_by") == user_id or f.get("assigned_to") == user_id:
+                user_folios.append(f)
+            elif isinstance(f.get("metadata"), dict) and f.get("metadata", {}).get("_verified_by") == user_id:
+                user_folios.append(f)
+            else:
+                user_folios.append(f)
+
+        folios_total_verified = len(user_folios)
+        folios_today = 0
+        folios_last_7_days = 0
+        last_activity_at = None
+
+        if user_folios:
+            first_ts = user_folios[0].get("verified_at") or user_folios[0].get("updated_at") or user_folios[0].get("created_at")
+            last_activity_at = first_ts
+
+        for f in user_folios:
+            v_at_str = f.get("verified_at") or f.get("updated_at") or f.get("created_at")
+            if v_at_str:
+                try:
+                    clean_str = v_at_str.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(clean_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt >= today_start:
+                        folios_today += 1
+                    if dt >= seven_days_ago:
+                        folios_last_7_days += 1
+                except Exception:
+                    pass
+
+        # Prepare recent folios list for table view (latest 10)
+        recent = []
+        for f in user_folios[:10]:
+            r2 = f.get("r2_url") or ""
+            filename = r2.split("/")[-1] if r2 else f"Folio #{f.get('id', '')[:8]}"
+            batch_data = f.get("batches") or {}
+            template_info = batch_data.get("templates") or {}
+            template_name = template_info.get("name") if isinstance(template_info, dict) else "General"
+            
+            recent.append({
+                "id": f.get("id"),
+                "filename": filename,
+                "template_name": template_name,
+                "status": f.get("status"),
+                "verified_at": f.get("verified_at") or f.get("updated_at") or f.get("created_at")
+            })
+
+        return DigitizerMetricsResponse(
+            status="success",
+            data=DigitizerMetricsData(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                full_name=full_name,
+                folios_today=folios_today,
+                folios_last_7_days=folios_last_7_days,
+                folios_total_verified=folios_total_verified,
+                last_activity_at=last_activity_at,
+                recent_folios=recent
+            )
+        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in get_digitizer_metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
