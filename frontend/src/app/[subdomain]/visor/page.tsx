@@ -16,6 +16,53 @@ export default function VisorDual() {
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState<any>({});
 
+  // Image viewer interaction states
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+  }, [folio?.id]);
+
+  const handleZoomIn = () => setZoom(z => Math.min(z + 0.25, 4));
+  const handleZoomOut = () => setZoom(z => Math.max(z - 0.25, 0.5));
+  const handleResetZoomPan = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+  };
+  const handleRotate = () => setRotation(r => (r + 90) % 360);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) {
+      setZoom(z => Math.min(z + 0.15, 4));
+    } else {
+      setZoom(z => Math.max(z - 0.15, 0.5));
+    }
+  };
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -196,11 +243,69 @@ export default function VisorDual() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Left side: Visor Dual (Document) */}
-      <div className="w-1/2 bg-gray-900 border-r flex items-center justify-center p-4 overflow-auto">
+      <div 
+        className="w-1/2 bg-gray-900 border-r relative flex items-center justify-center p-4 overflow-hidden select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      >
+        {/* Floating Toolbar */}
+        <div 
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 bg-gray-800/90 backdrop-blur border border-gray-700 text-white px-3 py-1.5 rounded-full shadow-lg text-sm"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button 
+            type="button"
+            onClick={handleZoomOut}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-200 font-bold"
+            title="Alejar (-)"
+            aria-label="Alejar"
+          >
+            -
+          </button>
+          <span className="text-xs font-mono font-medium min-w-[3rem] text-center select-none text-gray-200">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button 
+            type="button"
+            onClick={handleZoomIn}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-200 font-bold"
+            title="Acercar (+)"
+            aria-label="Acercar"
+          >
+            +
+          </button>
+          <span className="h-4 w-px bg-gray-600 mx-1" />
+          <button 
+            type="button"
+            onClick={handleRotate}
+            className="px-2.5 py-1 flex items-center rounded hover:bg-gray-700 text-xs text-gray-200 font-medium"
+            title="Rotar 90°"
+          >
+            Rotar 90°
+          </button>
+          <button 
+            type="button"
+            onClick={handleResetZoomPan}
+            className="px-2.5 py-1 flex items-center rounded hover:bg-gray-700 text-xs text-gray-200 font-medium"
+            title="Restablecer"
+          >
+            Restablecer
+          </button>
+        </div>
+
         {folio.view_url ? (
           <img 
             src={folio.view_url} 
             alt="Documento para indexar" 
+            draggable={false}
+            style={{ 
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
+              cursor: isDragging ? 'grabbing' : 'grab', 
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out' 
+            }}
             className="max-h-full max-w-full object-contain rounded shadow-lg"
           />
         ) : (
