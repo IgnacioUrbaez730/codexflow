@@ -76,3 +76,10 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
     - **Feedback y Modo Offline:** Badge visual animado "Guardado local" con tooltip de hora, y banner persistente superior ante pérdida de red (`navigator.onLine === false`) informando que el trabajo sigue a salvo.
     - **Restauración y Descarte:** Recuperación automática al reabrir el folio con toast flotante de 4 segundos. Botón y atajo `Alt + D` para descartar borrador con confirmación. Limpieza inmediata al guardar con éxito (`Ctrl + Enter`) o al dudar (`Ctrl + Espacio`).
 
+21. **Landing Page Oficial y Captura de Demos B2B (Spec 011):**
+    - **Portada Institucional:** Estilo SaaS moderno Slate-950 con titular H1, subtítulo y Sticky Navbar con detección reactiva de sesión (muestra "Ir a mi Panel" si está autenticado).
+    - **Simulador Interactivo Dual:** Mockup del Visor Dual con selector entre muestras paleográficas reales (Partida 1782 vs Protocolo 1824), lupa de 180px y formulario con badges de confianza `IA: 96%`.
+    - **Secciones de Conversión:** Comparativa Problema vs Solución, 4 Pilares Clave (Ergonomía, IA/Active Learning, Multi-Tenancy RLS, Exportación Excel), Casos de Uso (Diócesis, Notarías, Registros Civiles) y FAQ de 5 preguntas.
+    - **Captura Segura de Prospectos:** Modal "Solicitar Demo" con persistencia dual en Supabase `demo_requests` protegida por RLS y endpoint `/api/v1/demo-requests`.
+    - **SEO y Redes Sociales:** Metatags OpenGraph y Twitter Cards para previews automáticas al compartir en WhatsApp y LinkedIn.
+
