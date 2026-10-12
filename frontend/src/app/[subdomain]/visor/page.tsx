@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+import { Search } from "lucide-react";
+import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
+import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
+import { FilterControlsPopover } from "../../../components/viewer/FilterControlsPopover";
 
 export default function VisorDual() {
   const router = useRouter();
@@ -23,11 +27,32 @@ export default function VisorDual() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Hook for image filters and magnifier
+  const {
+    filters,
+    magnifier,
+    setMagnifier,
+    filterString,
+    updateFilter,
+    resetFilters,
+    resetMagnifier,
+    toggleMagnifier,
+    toggleInvert,
+    toggleGrayscale,
+    toggleBinarized,
+    setMagnifierZoom,
+  } = useImageViewerFilters();
+
+  const [imageRect, setImageRect] = useState<DOMRect | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setRotation(0);
-  }, [folio?.id]);
+    setMagnifier((m) => ({ ...m, active: false, visible: false }));
+  }, [folio?.id, setMagnifier]);
 
   const handleZoomIn = () => setZoom(z => Math.min(z + 0.25, 4));
   const handleZoomOut = () => setZoom(z => Math.max(z - 0.25, 0.5));
@@ -35,15 +60,33 @@ export default function VisorDual() {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setRotation(0);
+    resetFilters();
+    resetMagnifier();
   };
   const handleRotate = () => setRotation(r => (r + 90) % 360);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (magnifier.active) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (imgRef.current) {
+      const rect = imgRef.current.getBoundingClientRect();
+      setImageRect(rect);
+      const isInside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      setMagnifier((m) => ({
+        ...m,
+        cursorPos: { x: e.clientX, y: e.clientY },
+        visible: isInside,
+      }));
+    }
     if (!isDragging) return;
     setPan({
       x: e.clientX - dragStart.x,
@@ -55,11 +98,22 @@ export default function VisorDual() {
     setIsDragging(false);
   };
 
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    setMagnifier((m) => ({ ...m, visible: false }));
+  };
+
   const handleWheel = (e: React.WheelEvent) => {
-    if (e.deltaY < 0) {
-      setZoom(z => Math.min(z + 0.15, 4));
+    if (magnifier.active) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      setMagnifierZoom((z) => Math.max(1.5, Math.min(5.0, z + delta)));
     } else {
-      setZoom(z => Math.max(z - 0.15, 0.5));
+      if (e.deltaY < 0) {
+        setZoom(z => Math.min(z + 0.15, 4));
+      } else {
+        setZoom(z => Math.max(z - 0.15, 0.5));
+      }
     }
   };
 
@@ -216,8 +270,7 @@ export default function VisorDual() {
       if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         handleSave();
-      }
-      if (e.ctrlKey && e.code === "Space") {
+      } else if (e.ctrlKey && e.code === "Space") {
         e.preventDefault();
         handleMarkRevision();
       }
@@ -250,16 +303,17 @@ export default function VisorDual() {
     <div className="flex h-screen overflow-hidden">
       {/* Left side: Visor Dual (Document) */}
       <div 
+        ref={containerRef}
         className="w-1/2 bg-gray-900 border-r relative flex items-center justify-center p-4 overflow-hidden select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}
       >
         {/* Floating Toolbar */}
         <div 
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 bg-gray-800/90 backdrop-blur border border-gray-700 text-white px-3 py-1.5 rounded-full shadow-lg text-sm"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 bg-gray-800/90 backdrop-blur border border-gray-700 text-white px-3 py-1.5 rounded-full shadow-lg text-sm"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <button 
@@ -300,20 +354,58 @@ export default function VisorDual() {
           >
             Restablecer
           </button>
+
+          <span className="h-4 w-px bg-gray-600 mx-1" />
+
+          {/* Interactive Magnifier Toggle */}
+          <button
+            type="button"
+            onClick={toggleMagnifier}
+            className={`px-2.5 py-1 flex items-center gap-1.5 rounded text-xs font-medium transition-colors cursor-pointer select-none ${
+              magnifier.active ? "bg-blue-600 text-white shadow-sm" : "hover:bg-gray-700 text-gray-200"
+            }`}
+            title="Lupa Interactiva (L)"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Lupa [L]</span>
+          </button>
+
+          {/* Readability Filters Popover */}
+          <FilterControlsPopover
+            filters={filters}
+            updateFilter={updateFilter}
+            resetFilters={resetFilters}
+            toggleInvert={toggleInvert}
+            toggleGrayscale={toggleGrayscale}
+            toggleBinarized={toggleBinarized}
+          />
         </div>
 
         {folio.view_url ? (
-          <img 
-            src={folio.view_url} 
-            alt="Documento para indexar" 
-            draggable={false}
-            style={{ 
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
-              cursor: isDragging ? 'grabbing' : 'grab', 
-              transition: isDragging ? 'none' : 'transform 0.1s ease-out' 
-            }}
-            className="max-h-full max-w-full object-contain rounded shadow-lg"
-          />
+          <>
+            <img 
+              ref={imgRef}
+              src={folio.view_url} 
+              alt="Documento para indexar" 
+              draggable={false}
+              style={{ 
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
+                cursor: magnifier.active ? 'crosshair' : (isDragging ? 'grabbing' : 'grab'), 
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                filter: filterString
+              }}
+              className="max-h-full max-w-full object-contain rounded shadow-lg"
+            />
+
+            {/* Interactive Magnifier Floating Lens */}
+            <MagnifierLens
+              imageSrc={folio.view_url}
+              magnifier={magnifier}
+              filterString={filterString}
+              imageRect={imageRect}
+              rotation={rotation}
+            />
+          </>
         ) : (
           <div className="text-gray-400">Cargando documento...</div>
         )}

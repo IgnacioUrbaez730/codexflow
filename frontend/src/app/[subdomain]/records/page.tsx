@@ -21,6 +21,9 @@ import {
   Play,
   RotateCcw
 } from "lucide-react";
+import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
+import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
+import { FilterControlsPopover } from "../../../components/viewer/FilterControlsPopover";
 
 interface BatchOption {
   id: string;
@@ -87,6 +90,25 @@ export default function RecordsPage() {
   const [saving, setSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [releasingId, setReleasingId] = useState<string | null>(null);
+
+  // Readability filters and magnifier hook
+  const {
+    filters,
+    magnifier,
+    setMagnifier,
+    filterString,
+    updateFilter,
+    resetFilters,
+    resetMagnifier,
+    toggleMagnifier,
+    toggleInvert,
+    toggleGrayscale,
+    toggleBinarized,
+    setMagnifierZoom,
+  } = useImageViewerFilters();
+
+  const [modalImageRect, setModalImageRect] = useState<DOMRect | null>(null);
+  const modalImgRef = useRef<HTMLImageElement>(null);
 
   // Zoom / Pan / Rotate
   const [zoom, setZoom] = useState<number>(1);
@@ -239,6 +261,7 @@ export default function RecordsPage() {
     setZoom(1);
     setRotation(0);
     setPan({ x: 0, y: 0 });
+    setMagnifier((m) => ({ ...m, active: false, visible: false }));
     setIsModalOpen(true);
   };
 
@@ -246,6 +269,7 @@ export default function RecordsPage() {
     setIsModalOpen(false);
     setSelectedRecord(null);
     setSaveStatus(null);
+    setMagnifier((m) => ({ ...m, active: false, visible: false }));
   };
 
   const handleReleaseFolio = async (folioId: string) => {
@@ -285,15 +309,33 @@ export default function RecordsPage() {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setRotation(0);
+    resetFilters();
+    resetMagnifier();
   };
   const handleRotate = () => setRotation((r) => (r + 90) % 360);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (magnifier.active) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (modalImgRef.current) {
+      const rect = modalImgRef.current.getBoundingClientRect();
+      setModalImageRect(rect);
+      const isInside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      setMagnifier((m) => ({
+        ...m,
+        cursorPos: { x: e.clientX, y: e.clientY },
+        visible: isInside,
+      }));
+    }
     if (!isDragging) return;
     setPan({
       x: e.clientX - dragStart.x,
@@ -303,12 +345,22 @@ export default function RecordsPage() {
 
   const handleMouseUp = () => setIsDragging(false);
 
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    setMagnifier((m) => ({ ...m, visible: false }));
+  };
+
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    if (e.deltaY < 0) {
-      setZoom((z) => Math.min(z + 0.15, 4));
+    if (magnifier.active) {
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      setMagnifierZoom((z) => Math.max(1.5, Math.min(5.0, z + delta)));
     } else {
-      setZoom((z) => Math.max(z - 0.15, 0.5));
+      if (e.deltaY < 0) {
+        setZoom((z) => Math.min(z + 0.15, 4));
+      } else {
+        setZoom((z) => Math.max(z - 0.15, 0.5));
+      }
     }
   };
 
@@ -765,6 +817,31 @@ export default function RecordsPage() {
                   <div className="text-[11px] text-gray-400 font-mono px-2 border-l border-gray-700">
                     {Math.round(zoom * 100)}%
                   </div>
+
+                  <span className="h-4 w-px bg-gray-700 mx-0.5" />
+
+                  {/* Lupa Interactiva */}
+                  <button
+                    type="button"
+                    onClick={toggleMagnifier}
+                    className={`px-2 py-1 flex items-center gap-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                      magnifier.active ? "bg-blue-600 text-white shadow-sm" : "hover:bg-gray-800 text-gray-200"
+                    }`}
+                    title="Lupa Interactiva (L)"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Lupa</span>
+                  </button>
+
+                  {/* Popover de Filtros */}
+                  <FilterControlsPopover
+                    filters={filters}
+                    updateFilter={updateFilter}
+                    resetFilters={resetFilters}
+                    toggleInvert={toggleInvert}
+                    toggleGrayscale={toggleGrayscale}
+                    toggleBinarized={toggleBinarized}
+                  />
                 </div>
 
                 {/* Image Canvas Container */}
@@ -773,23 +850,36 @@ export default function RecordsPage() {
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
+                  onMouseLeave={handleMouseLeave}
                   onWheel={handleWheel}
                 >
                   {selectedRecord.view_url ? (
-                    <img
-                      src={selectedRecord.view_url}
-                      alt="Folio visualizado"
-                      style={{
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-                        transition: isDragging ? "none" : "transform 0.1s ease-out",
-                        maxHeight: "85%",
-                        maxWidth: "85%",
-                        objectFit: "contain",
-                      }}
-                      draggable={false}
-                      className="shadow-2xl rounded-xs pointer-events-none"
-                    />
+                    <>
+                      <img
+                        ref={modalImgRef}
+                        src={selectedRecord.view_url}
+                        alt="Folio visualizado"
+                        style={{
+                          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                          cursor: magnifier.active ? "crosshair" : (isDragging ? "grabbing" : "grab"),
+                          transition: isDragging ? "none" : "transform 0.1s ease-out",
+                          maxHeight: "85%",
+                          maxWidth: "85%",
+                          objectFit: "contain",
+                          filter: filterString,
+                        }}
+                        draggable={false}
+                        className="shadow-2xl rounded-xs pointer-events-none"
+                      />
+
+                      <MagnifierLens
+                        imageSrc={selectedRecord.view_url}
+                        magnifier={magnifier}
+                        filterString={filterString}
+                        imageRect={modalImageRect}
+                        rotation={rotation}
+                      />
+                    </>
                   ) : (
                     <div className="text-center text-gray-500 p-8">
                       <AlertTriangle className="w-10 h-10 text-yellow-500 mx-auto mb-2" />
