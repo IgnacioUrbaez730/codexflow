@@ -3,12 +3,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { Search, Eye, EyeOff, Crosshair } from "lucide-react";
+import { Search, Eye, EyeOff, Crosshair, Trash2 } from "lucide-react";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
 import { FilterControlsPopover } from "../../../components/viewer/FilterControlsPopover";
 import { AIOverlayLayer } from "../../../components/viewer/AIOverlayLayer";
 import { AIAssistedInput } from "../../../components/indexing/AIAssistedInput";
+import { AutosaveBadge } from "../../../components/viewer/AutosaveBadge";
+import { OfflineBanner } from "../../../components/viewer/OfflineBanner";
+import { DiscardDraftModal } from "../../../components/viewer/DiscardDraftModal";
+import { AutosaveRestoreToast } from "../../../components/viewer/AutosaveRestoreToast";
+import { useLocalAutosave } from "../../../hooks/useLocalAutosave";
+import { ViewerState, LocalDraft } from "../../../types/autosave";
 import { AIPrediction, BoundingBoxNormalized } from "../../../types/aiIndexing";
 import { shouldPrefillPrediction } from "../../../utils/aiGeometry";
 
@@ -73,6 +79,7 @@ export default function VisorDual() {
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
   const [showAIOverlay, setShowAIOverlay] = useState(false);
+  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
 
   // Image viewer interaction states
   const [zoom, setZoom] = useState(1);
@@ -418,6 +425,67 @@ export default function VisorDual() {
     });
   }, [folio, aiPredictions, formData]);
 
+  // Restore local draft callback
+  const handleRestoreDraft = useCallback((draft: LocalDraft) => {
+    if (draft.formData) {
+      setFormData(draft.formData);
+    }
+    if (draft.viewerState) {
+      if (typeof draft.viewerState.zoom === "number") setZoom(draft.viewerState.zoom);
+      if (draft.viewerState.pan) {
+        setPan(draft.viewerState.pan);
+      } else if (
+        typeof draft.viewerState.panX === "number" &&
+        typeof draft.viewerState.panY === "number"
+      ) {
+        setPan({ x: draft.viewerState.panX, y: draft.viewerState.panY });
+      }
+      if (typeof draft.viewerState.rotation === "number") setRotation(draft.viewerState.rotation);
+    }
+    if (draft.modifiedFields && Array.isArray(draft.modifiedFields)) {
+      setModifiedFields(new Set(draft.modifiedFields));
+    }
+  }, []);
+
+  // Centralized local autosave hook
+  const {
+    status: autosaveStatus,
+    isOnline,
+    hasDraft,
+    lastSavedAt,
+    showToast,
+    dismissToast,
+    clearDraft,
+    discardDraft,
+  } = useLocalAutosave({
+    tenantId: folio?.tenant_id || (subdomain as string),
+    folioId: folio?.id || null,
+    formData,
+    viewerState: {
+      zoom,
+      pan,
+      panX: pan.x,
+      panY: pan.y,
+      rotation,
+    },
+    modifiedFields: Array.from(modifiedFields),
+    onRestoreDraft: handleRestoreDraft,
+    debounceMs: 500,
+  });
+
+  // Discard draft confirmation handler
+  const handleConfirmDiscard = useCallback(() => {
+    discardDraft();
+    setIsDiscardModalOpen(false);
+    if (template && folio) {
+      const preds = parseAIPredictions(folio.ai_predictions, folio.id);
+      initializeFormWithAI(template, preds, folio.metadata);
+    }
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+  }, [discardDraft, template, folio, initializeFormWithAI]);
+
   const handleSave = useCallback(async () => {
     if (!folio) return;
 
@@ -459,6 +527,9 @@ export default function VisorDual() {
       return;
     }
 
+    // Clear local draft after successful save
+    clearDraft();
+
     // Also dispatch silent background feedback if needed
     if (feedbackData.length > 0) {
       fetch("/api/v1/ai/feedback", {
@@ -489,6 +560,7 @@ export default function VisorDual() {
     fetchNextFolio,
     supabase,
     buildFeedbackPayload,
+    clearDraft,
   ]);
 
   const handleMarkRevision = useCallback(async () => {
@@ -510,14 +582,17 @@ export default function VisorDual() {
       }),
     });
 
+    // Clear local draft after marking revision
+    clearDraft();
+
     if (folioIdParam) {
       router.push(`/${subdomain}/ingest`);
     } else {
       fetchNextFolio();
     }
-  }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase]);
+  }, [folio, formData, folioIdParam, router, subdomain, fetchNextFolio, supabase, clearDraft]);
 
-  // Global Keyboard Shortcuts (Alt+A, Alt+C, Ctrl+Enter, Ctrl+Space)
+  // Global Keyboard Shortcuts (Alt+A, Alt+C, Alt+D, Ctrl+Enter, Ctrl+Space)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && (e.key === "a" || e.key === "A")) {
@@ -526,6 +601,9 @@ export default function VisorDual() {
       } else if (e.altKey && (e.key === "c" || e.key === "C")) {
         e.preventDefault();
         handleForceRecenter();
+      } else if (e.altKey && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        setIsDiscardModalOpen(true);
       } else if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         handleSave();
@@ -559,10 +637,19 @@ export default function VisorDual() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Left side: Visor Dual (Document & AI Overlay) */}
-      <div
-        ref={containerRef}
+    <div className="flex flex-col h-screen overflow-hidden">
+      <OfflineBanner isOnline={isOnline} />
+      <AutosaveRestoreToast show={showToast} onDismiss={dismissToast} />
+      <DiscardDraftModal
+        isOpen={isDiscardModalOpen}
+        onConfirm={handleConfirmDiscard}
+        onCancel={() => setIsDiscardModalOpen(false)}
+      />
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left side: Visor Dual (Document & AI Overlay) */}
+        <div
+          ref={containerRef}
         className="w-1/2 bg-gray-900 border-r relative flex items-center justify-center p-4 overflow-hidden select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -732,6 +819,7 @@ export default function VisorDual() {
                   {aiPredictions.length} campos detectados por IA
                 </span>
               )}
+              <AutosaveBadge status={autosaveStatus} lastSavedAt={lastSavedAt} />
             </div>
           </div>
           <div className="text-xs text-gray-500 space-y-1 text-right">
@@ -740,6 +828,9 @@ export default function VisorDual() {
             </div>
             <div>
               <kbd className="bg-gray-200 px-1 rounded">Alt + C</kbd> Recentrar foco
+            </div>
+            <div>
+              <kbd className="bg-gray-200 px-1 rounded">Alt + D</kbd> Descartar borrador
             </div>
             <div>
               <kbd className="bg-gray-200 px-1 rounded">Ctrl + Enter</kbd> Guardar
@@ -774,21 +865,37 @@ export default function VisorDual() {
           )}
         </div>
 
-        <div className="p-4 border-t flex justify-end space-x-4 bg-gray-50">
-          <button
-            onClick={handleMarkRevision}
-            className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50 transition-colors"
-          >
-            Marcar Dudoso
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors"
-          >
-            Guardar y Continuar
-          </button>
+        <div className="p-4 border-t flex justify-between items-center bg-gray-50">
+          <div>
+            {hasDraft && (
+              <button
+                type="button"
+                onClick={() => setIsDiscardModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-rose-200 text-rose-600 rounded hover:bg-rose-50 transition-colors"
+                title="Descartar borrador local (Alt + D)"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Descartar borrador</span>
+              </button>
+            )}
+          </div>
+          <div className="flex space-x-4">
+            <button
+              onClick={handleMarkRevision}
+              className="px-4 py-2 border border-yellow-500 text-yellow-600 rounded hover:bg-yellow-50 transition-colors"
+            >
+              Marcar Dudoso
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-colors"
+            >
+              Guardar y Continuar
+            </button>
+          </div>
         </div>
       </div>
     </div>
+  </div>
   );
 }
