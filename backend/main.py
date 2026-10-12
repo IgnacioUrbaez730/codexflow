@@ -1093,7 +1093,7 @@ async def get_records(
         tenant_id = auth["tenant_id"]
         user_client = auth["user_client"]
         
-        query = user_client.table("folios").select("*, batches(name, uploaded_by)", count="exact").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
+        query = supabase.table("folios").select("*, batches(id, template_id, uploaded_by)", count="exact").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
         
         if batch_id:
             query = query.eq("batch_id", batch_id)
@@ -1105,14 +1105,14 @@ async def get_records(
         template_fields = None
         if batch_id:
             try:
-                batch_res = user_client.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
+                batch_res = supabase.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
                 if batch_res.data and len(batch_res.data) > 0:
                     tpl_data = batch_res.data[0].get("templates")
                     if tpl_data and "fields" in tpl_data:
                         template_fields = tpl_data["fields"]
                     elif batch_res.data[0].get("template_id"):
                         tpl_id = batch_res.data[0]["template_id"]
-                        tpl_res = user_client.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
+                        tpl_res = supabase.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
                         if tpl_res.data and len(tpl_res.data) > 0:
                             template_fields = tpl_res.data[0].get("fields", [])
             except Exception as t_err:
@@ -1150,8 +1150,8 @@ async def get_records(
         for f in paged_folios:
             folio_dict = dict(f)
             batch_rel = folio_dict.get("batches")
-            if isinstance(batch_rel, dict):
-                folio_dict["batch_name"] = batch_rel.get("name")
+            if isinstance(batch_rel, dict) and batch_rel.get("id"):
+                folio_dict["batch_name"] = f"Lote {str(batch_rel.get('id'))[:8]}"
             else:
                 folio_dict["batch_name"] = None
                 
@@ -1254,7 +1254,7 @@ async def export_records_csv(
         tenant_id = auth["tenant_id"]
         user_client = auth["user_client"]
 
-        query = user_client.table("folios").select("*, batches(name)").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
+        query = supabase.table("folios").select("*, batches(id, template_id, uploaded_by)").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
         if batch_id:
             query = query.eq("batch_id", batch_id)
         if start_date:
@@ -1284,14 +1284,14 @@ async def export_records_csv(
         template_fields = []
         if batch_id:
             try:
-                batch_res = user_client.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
+                batch_res = supabase.table("batches").select("template_id, templates(fields)").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
                 if batch_res.data and len(batch_res.data) > 0:
                     tpl_data = batch_res.data[0].get("templates")
                     if tpl_data and "fields" in tpl_data:
                         template_fields = tpl_data["fields"]
                     elif batch_res.data[0].get("template_id"):
                         tpl_id = batch_res.data[0]["template_id"]
-                        tpl_res = user_client.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
+                        tpl_res = supabase.table("templates").select("fields").eq("id", tpl_id).eq("tenant_id", tenant_id).execute()
                         if tpl_res.data and len(tpl_res.data) > 0:
                             template_fields = tpl_res.data[0].get("fields", [])
             except Exception as t_err:
@@ -1347,7 +1347,8 @@ async def export_records_csv(
                     r2_url = folio.get("r2_url") or ""
                     file_name = r2_url.split("/")[-1] if r2_url else ""
                     batch_info = folio.get("batches") or {}
-                    batch_name = batch_info.get("name", "")
+                    batch_rel_id = batch_info.get("id") or folio.get("batch_id")
+                    batch_name = f"Lote {str(batch_rel_id)[:8]}" if batch_rel_id else ""
                     meta = folio.get("metadata") or {}
                     row = [
                         folio.get("id", ""),

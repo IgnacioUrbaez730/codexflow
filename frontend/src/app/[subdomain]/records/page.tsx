@@ -131,7 +131,7 @@ export default function RecordsPage() {
       try {
         const { data: batchData } = await supabase
           .from("batches")
-          .select("id, name, created_at, templates(name)")
+          .select("id, created_at, templates(name)")
           .order("created_at", { ascending: false });
 
         if (batchData) {
@@ -409,7 +409,7 @@ export default function RecordsPage() {
               <option value="">Todos los lotes</option>
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name || `Lote ${b.id.slice(0, 8)}`} {b.templates?.name ? `(${b.templates.name})` : ""}
+                  {b.templates?.name ? `${b.templates.name} (${b.id.slice(0, 8)})` : `Lote ${b.id.slice(0, 8)}`}
                 </option>
               ))}
             </select>
