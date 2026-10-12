@@ -10,7 +10,15 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, Qu
 from pydantic import BaseModel
 from supabase import create_client, Client, ClientOptions
 from typing import List, Optional, Dict, Any
-from worker import process_file
+try:
+    from worker import process_file
+except ImportError:
+    from backend.worker import process_file
+
+try:
+    from ai_engine import extract_text_and_boxes, generate_template_ai_predictions
+except ImportError:
+    from backend.ai_engine import extract_text_and_boxes, generate_template_ai_predictions
 
 # Setup Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://localhost:8000")
@@ -347,6 +355,156 @@ async def get_ai_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
         print(f"Error fetching AI metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def ensure_folio_ai_predictions(
+    folio_data: Dict[str, Any], tenant_id: str, force: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Garantiza que el folio cuente con predicciones estructuradas de IA (con bbox normalizado
+    y bbox_array [xmin, ymin, xmax, ymax]) alineadas con los campos reales de la plantilla del lote
+    y el historial de Active Learning del tenant.
+    """
+    if not folio_data or not isinstance(folio_data, dict):
+        return []
+
+    folio_id = str(folio_data.get("id") or "")
+    batch_id = folio_data.get("batch_id")
+    effective_tenant_id = str(tenant_id or folio_data.get("tenant_id") or "")
+
+    template_fields: List[Dict[str, Any]] = []
+    try:
+        if batch_id and effective_tenant_id:
+            batch_res = (
+                supabase.table("batches")
+                .select("template_id")
+                .eq("id", batch_id)
+                .eq("tenant_id", effective_tenant_id)
+                .execute()
+            )
+            if batch_res.data and len(batch_res.data) > 0:
+                template_id = batch_res.data[0].get("template_id")
+                if template_id:
+                    tpl_res = (
+                        supabase.table("templates")
+                        .select("fields")
+                        .eq("id", template_id)
+                        .eq("tenant_id", effective_tenant_id)
+                        .execute()
+                    )
+                    if tpl_res.data and len(tpl_res.data) > 0:
+                        raw_fields = tpl_res.data[0].get("fields")
+                        if isinstance(raw_fields, list):
+                            template_fields = raw_fields
+    except Exception as tpl_err:
+        print(f"Notice fetching template fields in ensure_folio_ai_predictions: {tpl_err}")
+
+    existing_preds = folio_data.get("ai_predictions")
+    if not force and isinstance(existing_preds, list) and len(existing_preds) > 0:
+        expected_keys = {
+            str(f.get("id") or f.get("name") or f"field_{idx}")
+            for idx, f in enumerate(template_fields)
+            if isinstance(f, dict)
+        }
+        existing_keys = {
+            str(p.get("fieldKey") or p.get("field_key") or "")
+            for p in existing_preds
+            if isinstance(p, dict) and isinstance(p.get("bbox"), dict)
+        }
+        if (not expected_keys or expected_keys.issubset(existing_keys)) and len(existing_keys) > 0:
+            for p in existing_preds:
+                if isinstance(p, dict) and isinstance(p.get("bbox"), dict) and "bbox_array" not in p:
+                    bx = float(p["bbox"].get("x", 0.1))
+                    by = float(p["bbox"].get("y", 0.1))
+                    bw = float(p["bbox"].get("width", 0.3))
+                    bh = float(p["bbox"].get("height", 0.04))
+                    coords = [round(bx, 4), round(by, 4), round(bx + bw, 4), round(by + bh, 4)]
+                    p["bbox_array"] = coords
+                    p["bbox_coords"] = coords
+            return existing_preds
+
+    if not template_fields:
+        return existing_preds if isinstance(existing_preds, list) else []
+
+    training_rows: List[Dict[str, Any]] = []
+    if effective_tenant_id:
+        try:
+            td_res = (
+                supabase.table("training_data")
+                .select("*")
+                .eq("tenant_id", effective_tenant_id)
+                .limit(100)
+                .execute()
+            )
+            if td_res.data:
+                training_rows = list(td_res.data)
+        except Exception as td_err:
+            print(f"Notice fetching training_data: {td_err}")
+
+        # Complementar con metadatos validados de folios completados del mismo tenant
+        if not training_rows:
+            try:
+                comp_res = (
+                    supabase.table("folios")
+                    .select("metadata")
+                    .eq("tenant_id", effective_tenant_id)
+                    .eq("status", "completed")
+                    .limit(25)
+                    .execute()
+                )
+                if comp_res.data:
+                    for c_row in comp_res.data:
+                        meta = c_row.get("metadata")
+                        if isinstance(meta, dict):
+                            for mk, mv in meta.items():
+                                if mv is not None and str(mv).strip():
+                                    training_rows.append({
+                                        "tenant_id": effective_tenant_id,
+                                        "field_name": str(mk),
+                                        "actual_value": str(mv).strip(),
+                                    })
+            except Exception:
+                pass
+
+    ocr_boxes: List[Dict[str, Any]] = []
+    img_width, img_height = 1200, 1600
+    r2_key = folio_data.get("r2_url")
+    bucket_name = os.getenv("R2_BUCKET_NAME")
+
+    if r2_key and bucket_name and not str(r2_key).endswith(".dzi"):
+        try:
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                safe_name = os.path.basename(str(r2_key)) or "folio.jpg"
+                local_img = os.path.join(tmp_dir, safe_name)
+                s3_client.download_file(bucket_name, str(r2_key), local_img)
+                ocr_out = extract_text_and_boxes(local_img)
+                if isinstance(ocr_out, tuple) and len(ocr_out) == 3:
+                    ocr_boxes, img_width, img_height = ocr_out
+                elif isinstance(ocr_out, list):
+                    ocr_boxes = ocr_out
+        except Exception as img_err:
+            print(f"Notice: using standard dimensions for folio {folio_id}: {img_err}")
+
+    predictions = generate_template_ai_predictions(
+        template_fields=template_fields,
+        ocr_boxes=ocr_boxes,
+        img_width=img_width,
+        img_height=img_height,
+        training_rows=training_rows,
+        folio_id=folio_id,
+    )
+
+    if folio_id and effective_tenant_id and predictions:
+        try:
+            supabase.table("folios").update({"ai_predictions": predictions}).eq(
+                "id", folio_id
+            ).eq("tenant_id", effective_tenant_id).execute()
+        except Exception as upd_err:
+            print(f"Notice saving ai_predictions for folio {folio_id}: {upd_err}")
+
+    folio_data["ai_predictions"] = predictions
+    return predictions
+
+
 @app.post("/api/v1/folios/get_next")
 async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
@@ -358,6 +516,8 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
             return {"status": "success", "data": None}
             
         folio_data = res.data[0]
+        ensure_folio_ai_predictions(folio_data, tenant_id)
+
         if folio_data.get("r2_url"):
             try:
                 view_url = s3_client.generate_presigned_url(
@@ -406,6 +566,8 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
             raise HTTPException(status_code=404, detail="Folio no encontrado")
 
         folio_data = res.data[0]
+        ensure_folio_ai_predictions(folio_data, tenant_id)
+
         if folio_data.get("r2_url"):
             try:
                 view_url = s3_client.generate_presigned_url(
@@ -425,6 +587,30 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
         if isinstance(e, HTTPException):
             raise e
         print(f"Error in get_folio_by_id: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/folios/{folio_id}/analyze-ai")
+async def analyze_folio_ai(folio_id: str, auth: Dict[str, Any] = Depends(get_auth_context)):
+    try:
+        tenant_id = auth["tenant_id"]
+        res = (
+            supabase.table("folios")
+            .select("*")
+            .eq("id", folio_id)
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
+        if not res.data or len(res.data) == 0:
+            raise HTTPException(status_code=404, detail="Folio no encontrado")
+
+        folio_data = res.data[0]
+        predictions = ensure_folio_ai_predictions(folio_data, tenant_id, force=True)
+        return {"status": "success", "ai_predictions": predictions}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in analyze_folio_ai: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 import asyncio

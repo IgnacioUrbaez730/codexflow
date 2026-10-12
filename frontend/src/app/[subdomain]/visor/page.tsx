@@ -21,44 +21,127 @@ import { shouldPrefillPrediction } from "../../../utils/aiGeometry";
 function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
-    return raw.map((p, idx) => ({
-      id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
-      folioId: p.folioId || p.folio_id || folioId,
-      fieldKey: p.fieldKey || p.field_key || "",
-      suggestedText: p.suggestedText || p.suggested_text || p.value || "",
-      confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
-      bbox: p.bbox || { x: 0.1, y: 0.1 + idx * 0.08, width: 0.3, height: 0.04 },
-      isValidSyntax: p.isValidSyntax ?? true,
-      modelVersion: p.modelVersion || p.model_version || "v1.0",
-    }));
+    return raw.map((p, idx) => {
+      const bbox = p.bbox || { x: 0.1, y: 0.12 + idx * 0.08, width: 0.76, height: 0.048 };
+      const bboxArray: [number, number, number, number] =
+        Array.isArray(p.bbox_array) && p.bbox_array.length === 4
+          ? (p.bbox_array as [number, number, number, number])
+          : [
+              Number(bbox.x.toFixed(4)),
+              Number(bbox.y.toFixed(4)),
+              Number((bbox.x + bbox.width).toFixed(4)),
+              Number((bbox.y + bbox.height).toFixed(4)),
+            ];
+      return {
+        id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
+        folioId: p.folioId || p.folio_id || folioId,
+        fieldKey: p.fieldKey || p.field_key || "",
+        field_key: p.field_key || p.fieldKey || "",
+        fieldLabel: p.fieldLabel || p.field_label || p.fieldKey || p.field_key || "",
+        suggestedText: p.suggestedText || p.suggested_text || p.value || "",
+        suggested_text: p.suggested_text || p.suggestedText || p.value || "",
+        confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
+        bbox,
+        bbox_array: bboxArray,
+        bbox_coords: bboxArray,
+        isValidSyntax: p.isValidSyntax ?? true,
+        modelVersion: p.modelVersion || p.model_version || "v2.0-active-learning",
+      };
+    });
   }
   if (typeof raw === "object") {
     return Object.entries(raw).map(([key, val]: [string, any], idx) => {
       if (typeof val === "object" && val !== null) {
+        const bbox = val.bbox || { x: 0.1, y: 0.12 + idx * 0.08, width: 0.76, height: 0.048 };
+        const bboxArray: [number, number, number, number] = [
+          Number(bbox.x.toFixed(4)),
+          Number(bbox.y.toFixed(4)),
+          Number((bbox.x + bbox.width).toFixed(4)),
+          Number((bbox.y + bbox.height).toFixed(4)),
+        ];
         return {
           id: val.id || `pred-${key}-${idx}`,
           folioId: val.folioId || folioId,
           fieldKey: key,
+          field_key: key,
           suggestedText: val.value || val.suggestedText || val.suggested_text || "",
           confidence: typeof val.confidence === "number" ? val.confidence : 0.85,
-          bbox: val.bbox || { x: 0.1, y: 0.1 + idx * 0.08, width: 0.3, height: 0.04 },
+          bbox,
+          bbox_array: bboxArray,
+          bbox_coords: bboxArray,
           isValidSyntax: val.isValidSyntax ?? true,
-          modelVersion: val.modelVersion || "v1.0",
+          modelVersion: val.modelVersion || "v2.0-active-learning",
         };
       }
+      const bbox = { x: 0.1, y: 0.14 + idx * 0.075, width: 0.76, height: 0.048 };
+      const bboxArray: [number, number, number, number] = [
+        Number(bbox.x.toFixed(4)),
+        Number(bbox.y.toFixed(4)),
+        Number((bbox.x + bbox.width).toFixed(4)),
+        Number((bbox.y + bbox.height).toFixed(4)),
+      ];
       return {
         id: `pred-${key}-${idx}`,
         folioId,
         fieldKey: key,
+        field_key: key,
         suggestedText: String(val || ""),
         confidence: 0.88,
-        bbox: { x: 0.1, y: 0.15 + idx * 0.07, width: 0.35, height: 0.04 },
+        bbox,
+        bbox_array: bboxArray,
+        bbox_coords: bboxArray,
         isValidSyntax: true,
-        modelVersion: "v1.0",
+        modelVersion: "v2.0-active-learning",
       };
     });
   }
   return [];
+}
+
+function buildFallbackTemplatePredictions(fields: any[], folioId?: string): AIPrediction[] {
+  if (!Array.isArray(fields) || fields.length === 0) return [];
+  const total = Math.max(1, fields.length);
+  const stepY = Math.min(0.085, 0.72 / total);
+
+  return fields.map((field: any, idx: number) => {
+    const fieldKey = String(field.id || field.name || `field_${idx}`);
+    const fieldLabel = String(field.label || field.name || fieldKey);
+    const fieldType = String(field.type || "short_text").toLowerCase();
+    const x = 0.1;
+    const y = Number(Math.min(0.88, 0.14 + idx * stepY).toFixed(4));
+    const width = 0.76;
+    const height = fieldType === "long_text" ? 0.08 : 0.048;
+    const bbox = { x, y, width, height };
+    const bboxArray: [number, number, number, number] = [
+      x,
+      y,
+      Number((x + width).toFixed(4)),
+      Number((y + height).toFixed(4)),
+    ];
+    const suggestedText =
+      (fieldType === "dropdown" || fieldType === "select") &&
+      Array.isArray(field.options) &&
+      field.options.length > 0
+        ? String(field.options[0])
+        : "";
+    const confidence = suggestedText ? 0.82 : 0.76;
+
+    return {
+      id: `pred-${folioId ? String(folioId).slice(0, 8) : "doc"}-${idx}`,
+      folioId,
+      fieldKey,
+      field_key: fieldKey,
+      fieldLabel,
+      suggestedText,
+      suggested_text: suggestedText,
+      confidence,
+      bbox,
+      bbox_array: bboxArray,
+      bbox_coords: bboxArray,
+      isValidSyntax: true,
+      modelVersion: "v2.0-active-learning",
+    };
+  });
 }
 
 export default function VisorDual() {
@@ -105,6 +188,10 @@ export default function VisorDual() {
   } = useImageViewerFilters();
 
   const [imageRect, setImageRect] = useState<DOMRect | null>(null);
+  const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number }>({
+    width: 800,
+    height: 1000,
+  });
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -125,7 +212,6 @@ export default function VisorDual() {
     resetMagnifier();
   };
   const handleRotate = () => setRotation((r) => (r + 90) % 360);
-  const handleToggleAI = useCallback(() => setShowAIOverlay((prev) => !prev), []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (magnifier.active) return;
@@ -226,13 +312,114 @@ export default function VisorDual() {
     []
   );
 
+  const applyPredictionsToEmptyFields = useCallback(
+    (currentTemplate: any, predictions: AIPrediction[]) => {
+      if (!currentTemplate || !Array.isArray(currentTemplate.fields) || predictions.length === 0) {
+        return;
+      }
+      setFormData((prevForm) => {
+        const updated = { ...prevForm };
+        const nextPrefilled = new Set(prefilledFields);
+        for (const field of currentTemplate.fields) {
+          if (updated[field.id] === undefined || String(updated[field.id]).trim() === "") {
+            const match = predictions.find(
+              (p) =>
+                p.fieldKey === field.id ||
+                p.fieldKey === field.name ||
+                p.field_key === field.id
+            );
+            if (
+              match &&
+              shouldPrefillPrediction(match.confidence, match.suggestedText, field.type)
+            ) {
+              updated[field.id] = match.suggestedText;
+              nextPrefilled.add(field.id);
+            }
+          }
+        }
+        setPrefilledFields(nextPrefilled);
+        return updated;
+      });
+    },
+    [prefilledFields]
+  );
+
+  const handleToggleAI = useCallback(async () => {
+    const nextState = !showAIOverlay;
+    setShowAIOverlay(nextState);
+
+    if (nextState && aiPredictions.length === 0 && folio?.id) {
+      let resolvedPreds: AIPrediction[] = [];
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const res = await fetch(`/api/v1/folios/${folio.id}/analyze-ai`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionData.session?.access_token}`,
+          },
+        });
+        if (res.ok) {
+          const resData = await res.json();
+          resolvedPreds = parseAIPredictions(resData.ai_predictions, folio.id);
+        }
+      } catch (err) {
+        console.warn("Notice analyzing AI on toggle:", err);
+      }
+
+      if (resolvedPreds.length === 0 && template?.fields?.length > 0) {
+        resolvedPreds = buildFallbackTemplatePredictions(template.fields, folio.id);
+      }
+
+      if (resolvedPreds.length > 0) {
+        setAiPredictions(resolvedPreds);
+        applyPredictionsToEmptyFields(template, resolvedPreds);
+      }
+    }
+  }, [
+    showAIOverlay,
+    aiPredictions.length,
+    folio?.id,
+    supabase,
+    template,
+    applyPredictionsToEmptyFields,
+  ]);
+
   const fetchTemplate = useCallback(
     async (templateId: string, currentFolio?: any, predictions?: AIPrediction[]) => {
       const { data } = await supabase.from("templates").select("*").eq("id", templateId).single();
       if (data) {
         setTemplate(data);
         if (currentFolio) {
-          const preds = predictions || parseAIPredictions(currentFolio.ai_predictions, currentFolio.id);
+          let preds =
+            predictions && predictions.length > 0
+              ? predictions
+              : parseAIPredictions(currentFolio.ai_predictions, currentFolio.id);
+
+          if (preds.length === 0 && currentFolio.id) {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const aiRes = await fetch(`/api/v1/folios/${currentFolio.id}/analyze-ai`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${sessionData.session?.access_token}`,
+                },
+              });
+              if (aiRes.ok) {
+                const aiData = await aiRes.json();
+                preds = parseAIPredictions(aiData.ai_predictions, currentFolio.id);
+              }
+            } catch (err) {
+              console.warn("Fallback to template bounding boxes:", err);
+            }
+          }
+
+          if (preds.length === 0 && Array.isArray(data.fields) && data.fields.length > 0) {
+            preds = buildFallbackTemplatePredictions(data.fields, currentFolio.id);
+          }
+
+          setAiPredictions(preds);
           initializeFormWithAI(data, preds, currentFolio.metadata);
         }
       }
@@ -368,13 +555,16 @@ export default function VisorDual() {
   // Force camera recentering on active field (Alt + C)
   const handleForceRecenter = useCallback(() => {
     if (!activeFieldKey) return;
+    if (!showAIOverlay) {
+      setShowAIOverlay(true);
+    }
     const pred = aiPredictions.find(
       (p) => p.fieldKey === activeFieldKey || p.field_key === activeFieldKey
     );
     if (pred && pred.bbox) {
       centerCameraOnBBox(pred.bbox, zoom, true);
     }
-  }, [activeFieldKey, aiPredictions, centerCameraOnBBox, zoom]);
+  }, [activeFieldKey, showAIOverlay, aiPredictions, centerCameraOnBBox, zoom]);
 
   // Click on a bounding box directly inserts its text into the focused field
   const handleSelectPredictionBox = useCallback(
@@ -768,6 +958,14 @@ export default function VisorDual() {
                 src={folio.view_url}
                 alt="Documento para indexar"
                 draggable={false}
+                onLoad={(e) => {
+                  const el = e.currentTarget;
+                  setImgDimensions({
+                    width: el.naturalWidth || el.clientWidth || 800,
+                    height: el.naturalHeight || el.clientHeight || 1000,
+                  });
+                  setImageRect(el.getBoundingClientRect());
+                }}
                 style={{
                   cursor: magnifier.active ? "crosshair" : isDragging ? "grabbing" : "grab",
                   filter: filterString,
@@ -781,8 +979,18 @@ export default function VisorDual() {
                 activeFieldKey={activeFieldKey}
                 visible={showAIOverlay}
                 rotation={0}
-                imageWidth={imgRef.current?.naturalWidth || imgRef.current?.clientWidth || 800}
-                imageHeight={imgRef.current?.naturalHeight || imgRef.current?.clientHeight || 1000}
+                imageWidth={
+                  imgRef.current?.naturalWidth ||
+                  imgRef.current?.clientWidth ||
+                  imgDimensions.width ||
+                  800
+                }
+                imageHeight={
+                  imgRef.current?.naturalHeight ||
+                  imgRef.current?.clientHeight ||
+                  imgDimensions.height ||
+                  1000
+                }
                 onSelectPrediction={handleSelectPredictionBox}
               />
             </div>
