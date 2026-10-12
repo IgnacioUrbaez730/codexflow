@@ -118,13 +118,13 @@ async def async_process_file(folio_id: str, file_key: str, user_client: Client, 
             await loop.run_in_executor(None, process_file, folio_id, file_key)
         except Exception as file_e:
             print(f"Error processing file {file_key} for folio {folio_id}: {file_e}")
-            user_client.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
-            user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+            supabase.table("folios").update({"status": "failed"}).eq("id", folio_id).execute()
+            supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
 async def process_batch_task(batch_id: str, files: List[str], user_client: Client, tenant_id: str):
     try:
         # Update batch status to processing
-        user_client.table("batches").update({"status": "processing"}).eq("id", batch_id).execute()
+        supabase.table("batches").update({"status": "processing"}).eq("id", batch_id).execute()
         
         tasks = []
         # Create folios for each file with status pending
@@ -135,7 +135,7 @@ async def process_batch_task(batch_id: str, files: List[str], user_client: Clien
                 "status": "pending",
                 "r2_url": file,
             }
-            res = user_client.table("folios").insert(folio_data).execute()
+            res = supabase.table("folios").insert(folio_data).execute()
             
             # Prepare processing task
             if res.data:
@@ -148,7 +148,7 @@ async def process_batch_task(batch_id: str, files: List[str], user_client: Clien
         
     except Exception as e:
         print(f"Error processing batch {batch_id}: {e}")
-        user_client.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
+        supabase.table("batches").update({"status": "failed"}).eq("id", batch_id).execute()
 
 @app.post("/api/v1/ingest")
 async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks, auth: Dict[str, Any] = Depends(get_auth_context)):
