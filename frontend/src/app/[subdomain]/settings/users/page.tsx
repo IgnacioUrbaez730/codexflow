@@ -43,8 +43,9 @@ export default function UsersPage() {
         }
       });
       if (!res.ok) throw new Error('Failed to fetch team');
-      const data = await res.json();
-      setUsers(data);
+      const json = await res.json();
+      const list = Array.isArray(json) ? json : (json.data || []);
+      setUsers(list);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -74,7 +75,7 @@ export default function UsersPage() {
         body: JSON.stringify({ email: inviteEmail, role: inviteRole })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to invite user');
+      if (!res.ok) throw new Error(data.detail || data.error || 'Failed to invite user');
       
       setInviteMsg('Invitación enviada o usuario añadido');
       setInviteEmail('');
@@ -100,15 +101,17 @@ export default function UsersPage() {
         body: JSON.stringify(updates)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update user');
+      if (!res.ok) throw new Error(data.detail || data.error || 'Failed to update user');
       fetchUsers();
     } catch (err: any) {
       alert(err.message);
     }
   };
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.email.toLowerCase().includes(search.toLowerCase());
+  const userList = Array.isArray(users) ? users : [];
+  const filteredUsers = userList.filter(u => {
+    const email = u.email || '';
+    const matchesSearch = email.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? u.is_active : !u.is_active);
     return matchesSearch && matchesStatus;
   });
