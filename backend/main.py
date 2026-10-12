@@ -206,7 +206,22 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
         if not res.data or len(res.data) == 0:
             return {"status": "success", "data": None}
             
-        return {"status": "success", "data": res.data[0]}
+        folio_data = res.data[0]
+        if folio_data.get("r2_url"):
+            try:
+                view_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': os.getenv('R2_BUCKET_NAME'),
+                        'Key': folio_data["r2_url"]
+                    },
+                    ExpiresIn=3600
+                )
+                folio_data["view_url"] = view_url
+            except Exception as e:
+                print(f"Error generando view_url: {e}")
+
+        return {"status": "success", "data": folio_data}
     except Exception as e:
         print(f"Error in get_next_folio: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

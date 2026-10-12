@@ -196,10 +196,16 @@ export default function VisorDual() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Left side: Visor Dual (Document) */}
-      <div className="w-1/2 bg-gray-200 border-r flex items-center justify-center p-4">
-        <div className="w-full h-full bg-white shadow flex items-center justify-center text-gray-400">
-          Visualizador de Documento ({folio.r2_url})
-        </div>
+      <div className="w-1/2 bg-gray-900 border-r flex items-center justify-center p-4 overflow-auto">
+        {folio.view_url ? (
+          <img 
+            src={folio.view_url} 
+            alt="Documento para indexar" 
+            className="max-h-full max-w-full object-contain rounded shadow-lg"
+          />
+        ) : (
+          <div className="text-gray-400">Cargando documento...</div>
+        )}
       </div>
       
       {/* Right side: Form */}
