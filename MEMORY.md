@@ -80,6 +80,9 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
     - **Portada Institucional:** Estilo SaaS moderno Slate-950 con titular H1, subtítulo y Sticky Navbar con detección reactiva de sesión (muestra "Ir a mi Panel" si está autenticado).
     - **Simulador Interactivo Dual:** Mockup del Visor Dual con selector entre muestras paleográficas reales (Partida 1782 vs Protocolo 1824), lupa de 180px y formulario con badges de confianza `IA: 96%`.
     - **Secciones de Conversión:** Comparativa Problema vs Solución, 4 Pilares Clave (Ergonomía, IA/Active Learning, Multi-Tenancy RLS, Exportación Excel), Casos de Uso (Diócesis, Notarías, Registros Civiles) y FAQ de 5 preguntas.
-    - **Captura Segura de Prospectos:** Modal "Solicitar Demo" con persistencia dual en Supabase `demo_requests` protegida por RLS y endpoint `/api/v1/demo-requests`.
+    - **Captura Segura de Prospectos:** Modal "Solicitar Demo" con persistencia dual en Supabase `demo_requests` y respaldo en Cloudflare R2 (`_system/demo_requests/requests.json`), notificación de correo automática vía FormSubmit/SMTP hacia `SUPERADMIN_EMAIL` y bandeja de gestión en `/superadmin` con creación de ONG prellenada en 1 clic.
     - **SEO y Redes Sociales:** Metatags OpenGraph y Twitter Cards para previews automáticas al compartir en WhatsApp y LinkedIn.
 
+22. **Loop de Mantenimiento del Motor de IA en Backend (Spec 009, Loop 1):**
+    - **Reparación de `worker.py` y `ai_engine.py`:** Se corrigió el import relativo (`from ai_engine`), el bloqueo por ausencia de `libvips` en Render y la consulta rota `folios -> batches -> templates(fields)`. Se implementó detección visual de renglones de escritura con `PIL` (`_detect_visual_lines_with_pil`), mapeo real hacia los `fields` de la plantilla y alimentación con el historial de `training_data` del `tenant_id`.
+    - **Auto-análisis bajo demanda:** Se incorporó `ensure_folio_ai_predictions` y el endpoint `POST /api/v1/folios/{folio_id}/analyze-ai` para que incluso los folios antiguos sin `ai_predictions` generen sus recuadros `[xmin, ymin, xmax, ymax]` al cargarse o al activar `IA [Alt+A]` en el Visor.
