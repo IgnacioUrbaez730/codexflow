@@ -90,3 +90,7 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
 23. **Loop de Mantenimiento de Registros y Borrado (Spec 008, Loop 1):**
     - **Eliminación Segura de Registros:** Se implementó `DELETE /api/v1/records/{folio_id}` con verificación estricta de `tenant_id` y roles (prohibido para digitadores, archivistas solo sus lotes, admin/superadmin total).
     - **Interfaz de Usuario:** Botón de papelera roja (`Trash2`) en la tabla de Registros y en el modal de detalle, modal de confirmación de seguridad con indicador de carga y refresco automático de la lista de registros.
+
+24. **Eliminación Total de Datos Simulados y Active Learning Real (Spec 009, Loop 2):**
+    - **Cero Mock Data:** Se purgaron todos los valores simulados en `AIDashboardMetrics.tsx` (126, 14, 2, 88.5%) y en `GET /api/v1/ai/metrics`. Los contadores reflejan 0 hasta que existan calibraciones reales.
+    - **Persistencia Dual en R2:** Guardado garantizado de feedback y discrepancias humanas en Cloudflare R2 (`_system/training_data/{tenant_id}.json`) además de Supabase en cada guardado de folio (`/api/v1/folios/save`), alimentando métricas y aprendizaje 100% reales.
