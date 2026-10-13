@@ -221,6 +221,50 @@ async def register_feedback(request: FeedbackRequest, auth: Dict[str, Any] = Dep
     except Exception as e:
         print(f"Error in register_feedback: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
+def _get_r2_training_data_key(tenant_id: str) -> str:
+    return f"_system/training_data/{tenant_id}.json"
+
+def _load_r2_training_data(tenant_id: str) -> List[Dict[str, Any]]:
+    bucket = os.getenv("R2_BUCKET_NAME")
+    if not bucket or not tenant_id:
+        return []
+    try:
+        key = _get_r2_training_data_key(tenant_id)
+        obj = s3_client.get_object(Bucket=bucket, Key=key)
+        raw = obj["Body"].read().decode("utf-8")
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return data
+    except Exception as e:
+        print(f"Info reading training_data from R2 for {tenant_id}: {e}")
+    return []
+
+def _save_r2_training_data(tenant_id: str, new_rows: List[Dict[str, Any]]) -> None:
+    bucket = os.getenv("R2_BUCKET_NAME")
+    if not bucket or not tenant_id or not new_rows:
+        return
+    try:
+        existing = _load_r2_training_data(tenant_id)
+        # Deduplicate / merge rows by id or (folio_id + field_name)
+        combined_map = {}
+        for row in existing:
+            row_key = row.get("id") or f"{row.get('folio_id')}_{row.get('field_name')}"
+            combined_map[row_key] = row
+        for row in new_rows:
+            row_key = row.get("id") or f"{row.get('folio_id')}_{row.get('field_name')}"
+            combined_map[row_key] = row
+        merged = list(combined_map.values())
+
+        key = _get_r2_training_data_key(tenant_id)
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8"),
+            ContentType="application/json"
+        )
+    except Exception as e:
+        print(f"Warning saving training_data to R2 for {tenant_id}: {e}")
+
 @app.post("/api/v1/ai/feedback")
 async def record_ai_feedback(request: AIFeedbackPayload, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
@@ -257,6 +301,7 @@ async def record_ai_feedback(request: AIFeedbackPayload, auth: Dict[str, Any] = 
                     action_type = "corrected_text"
                     
             row: Dict[str, Any] = {
+                "id": str(uuid.uuid4()),
                 "tenant_id": tenant_id,
                 "folio_id": request.folio_id,
                 "field_name": item.field_name,
@@ -275,10 +320,16 @@ async def record_ai_feedback(request: AIFeedbackPayload, auth: Dict[str, Any] = 
             rows_to_insert.append(row)
             
         if rows_to_insert:
+            # 1. Intentar persistir en Supabase
             try:
                 user_client.table("training_data").insert(rows_to_insert).execute()
-            except Exception:
-                supabase.table("training_data").insert(rows_to_insert).execute()
+            except Exception as sb_err:
+                try:
+                    supabase.table("training_data").insert(rows_to_insert).execute()
+                except Exception as sb_err2:
+                    print(f"Warning: could not insert feedback in Supabase training_data: {sb_err2}")
+            # 2. Persistir siempre en Cloudflare R2 como almacén garantizado
+            _save_r2_training_data(tenant_id, rows_to_insert)
                 
         return {
             "status": "success",
@@ -300,12 +351,31 @@ async def get_ai_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
         tenant_id = auth["tenant_id"]
         user_client = auth["user_client"]
         
+        rows: List[Dict[str, Any]] = []
         try:
             res = user_client.table("training_data").select("*").eq("tenant_id", tenant_id).execute()
-        except Exception:
-            res = supabase.table("training_data").select("*").eq("tenant_id", tenant_id).execute()
-            
-        rows = res.data or []
+            if res.data:
+                rows.extend(res.data)
+        except Exception as q_err:
+            try:
+                res = supabase.table("training_data").select("*").eq("tenant_id", tenant_id).execute()
+                if res.data:
+                    rows.extend(res.data)
+            except Exception as sb_err:
+                print(f"Info querying supabase training_data: {sb_err}")
+
+        # Si falló Supabase o para complementar con R2
+        r2_rows = _load_r2_training_data(tenant_id)
+        if r2_rows:
+            combined_map = {}
+            for r in rows:
+                key = r.get("id") or f"{r.get('folio_id')}_{r.get('field_name')}"
+                combined_map[key] = r
+            for r in r2_rows:
+                key = r.get("id") or f"{r.get('folio_id')}_{r.get('field_name')}"
+                if key not in combined_map:
+                    combined_map[key] = r
+            rows = list(combined_map.values())
         
         total_accepted = 0
         total_corrected = 0
@@ -333,8 +403,21 @@ async def get_ai_metrics(auth: Dict[str, Any] = Depends(get_auth_context)):
                 pass
                 
         total_suggestions = total_accepted + total_corrected + total_rejected
-        acceptance_rate = round((total_accepted / total_suggestions) * 100, 1) if total_suggestions > 0 else 88.5
+        acceptance_rate = round((total_accepted / total_suggestions) * 100, 1) if total_suggestions > 0 else 0.0
         
+        if total_suggestions == 0:
+            return {
+                "status": "success",
+                "data": {
+                    "acceptance_rate": 0.0,
+                    "total_suggestions": 0,
+                    "total_accepted": 0,
+                    "total_corrected": 0,
+                    "total_rejected": 0,
+                    "by_field": {}
+                }
+            }
+
         for fn, f_data in by_field.items():
             s = f_data["suggestions"]
             f_data["accuracy"] = round((f_data["accepted"] / s) * 100, 1) if s > 0 else 0.0
@@ -1532,6 +1615,7 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
                 feedback_rows = []
                 for fb in request.feedback:
                     feedback_rows.append({
+                        "id": str(uuid.uuid4()),
                         "tenant_id": tenant_id,
                         "folio_id": request.folio_id,
                         "field_name": fb.get("field_name") or fb.get("fieldKey") or "unknown",
@@ -1542,7 +1626,14 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
                         "corrected_by_user_id": user_id
                     })
                 if feedback_rows:
-                    supabase.table("training_data").insert(feedback_rows).execute()
+                    try:
+                        user_client.table("training_data").insert(feedback_rows).execute()
+                    except Exception:
+                        try:
+                            supabase.table("training_data").insert(feedback_rows).execute()
+                        except Exception as sb_err:
+                            print(f"Warning: could not insert active learning feedback to supabase: {sb_err}")
+                    _save_r2_training_data(tenant_id, feedback_rows)
             except Exception as fb_err:
                 print(f"Warning: could not insert active learning feedback: {fb_err}")
 

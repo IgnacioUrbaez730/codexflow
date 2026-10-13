@@ -25,25 +25,36 @@ export function AIDashboardMetrics({ token }: AIDashboardMetricsProps) {
           const data = await res.json();
           if (data.status === "success" && data.data) {
             setMetrics(data.data);
+          } else {
+            setMetrics({
+              acceptance_rate: 0,
+              total_suggestions: 0,
+              total_accepted: 0,
+              total_corrected: 0,
+              total_rejected: 0,
+              by_field: {},
+            });
           }
         } else {
-          // Default baseline fallback metrics for UI showcase if not yet in database
           setMetrics({
-            acceptance_rate: 88.5,
-            total_suggestions: 142,
-            total_accepted: 126,
-            total_corrected: 14,
-            total_rejected: 2,
-            by_field: {
-              nombre_bautizado: { suggestions: 45, accepted: 42, corrected: 3, accuracy: 93.3 },
-              fecha_sacramento: { suggestions: 40, accepted: 38, corrected: 2, accuracy: 95.0 },
-              padres: { suggestions: 32, accepted: 27, corrected: 5, accuracy: 84.4 },
-              padrinos: { suggestions: 25, accepted: 19, corrected: 4, accuracy: 76.0 },
-            },
+            acceptance_rate: 0,
+            total_suggestions: 0,
+            total_accepted: 0,
+            total_corrected: 0,
+            total_rejected: 0,
+            by_field: {},
           });
         }
       } catch (err) {
         console.warn("Could not load AI metrics:", err);
+        setMetrics({
+          acceptance_rate: 0,
+          total_suggestions: 0,
+          total_accepted: 0,
+          total_corrected: 0,
+          total_rejected: 0,
+          by_field: {},
+        });
       } finally {
         setLoading(false);
       }
@@ -84,6 +95,12 @@ export function AIDashboardMetrics({ token }: AIDashboardMetricsProps) {
         </span>
       </div>
 
+      {metrics.total_suggestions === 0 && (
+        <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-sm">
+          Aún no se han acumulado calibraciones de Active Learning. A medida que vayas validando o corrigiendo folios en el Visor de Indexación, aquí se calculará la efectividad real en tiempo real para tu organización.
+        </div>
+      )}
+
       {/* Metrics Counters */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-emerald-50/60 border border-emerald-100 p-4 rounded-lg flex items-center justify-between">
@@ -111,8 +128,8 @@ export function AIDashboardMetrics({ token }: AIDashboardMetricsProps) {
         </div>
       </div>
 
-      {/* Breakdown by Field */}
-      {metrics.by_field && Object.keys(metrics.by_field).length > 0 && (
+      {/* Breakdown by Field - solo si hay sugerencias y campos registrados */}
+      {metrics.total_suggestions > 0 && metrics.by_field && Object.keys(metrics.by_field).length > 0 && (
         <div className="space-y-3 pt-2 border-t border-gray-100">
           <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">
             Precisión Desglosada por Campo
