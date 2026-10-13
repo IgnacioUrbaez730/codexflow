@@ -448,13 +448,43 @@ export default function VisorDual() {
         const parsedPreds = parseAIPredictions(nextFolio.ai_predictions, nextFolio.id);
         setAiPredictions(parsedPreds);
 
-        const batchRes = await supabase
-          .from("batches")
-          .select("template_id")
-          .eq("id", nextFolio.batch_id)
-          .single();
-        if (batchRes.data) {
-          await fetchTemplate(batchRes.data.template_id, nextFolio, parsedPreds);
+        if (nextFolio.template && Array.isArray(nextFolio.template.fields)) {
+          setTemplate(nextFolio.template);
+          let preds = parsedPreds;
+          if (preds.length === 0 && nextFolio.template.fields.length > 0) {
+            preds = buildFallbackTemplatePredictions(nextFolio.template.fields, nextFolio.id);
+            setAiPredictions(preds);
+          }
+          initializeFormWithAI(nextFolio.template, preds, nextFolio.metadata);
+        } else if (nextFolio.template_id) {
+          await fetchTemplate(nextFolio.template_id, nextFolio, parsedPreds);
+        } else {
+          // Fallback via batches query
+          let templateFound = false;
+          if (nextFolio.batch_id) {
+            const batchRes = await supabase
+              .from("batches")
+              .select("template_id")
+              .eq("id", nextFolio.batch_id)
+              .single();
+            if (batchRes.data?.template_id) {
+              await fetchTemplate(batchRes.data.template_id, nextFolio, parsedPreds);
+              templateFound = true;
+            }
+          }
+
+          if (!templateFound) {
+            const { data: firstTpl } = await supabase.from("templates").select("*").limit(1).single();
+            if (firstTpl) {
+              setTemplate(firstTpl);
+              let preds = parsedPreds;
+              if (preds.length === 0 && Array.isArray(firstTpl.fields) && firstTpl.fields.length > 0) {
+                preds = buildFallbackTemplatePredictions(firstTpl.fields, nextFolio.id);
+                setAiPredictions(preds);
+              }
+              initializeFormWithAI(firstTpl, preds, nextFolio.metadata);
+            }
+          }
         }
       } else {
         setFolio(null);
@@ -464,7 +494,7 @@ export default function VisorDual() {
       setFolio(null);
     }
     setLoading(false);
-  }, [supabase, fetchTemplate]);
+  }, [supabase, fetchTemplate, initializeFormWithAI]);
 
   const fetchSpecificFolio = useCallback(
     async (id: string) => {
@@ -484,13 +514,43 @@ export default function VisorDual() {
           const parsedPreds = parseAIPredictions(specFolio.ai_predictions, specFolio.id);
           setAiPredictions(parsedPreds);
 
-          const batchRes = await supabase
-            .from("batches")
-            .select("template_id")
-            .eq("id", specFolio.batch_id)
-            .single();
-          if (batchRes.data) {
-            await fetchTemplate(batchRes.data.template_id, specFolio, parsedPreds);
+          if (specFolio.template && Array.isArray(specFolio.template.fields)) {
+            setTemplate(specFolio.template);
+            let preds = parsedPreds;
+            if (preds.length === 0 && specFolio.template.fields.length > 0) {
+              preds = buildFallbackTemplatePredictions(specFolio.template.fields, specFolio.id);
+              setAiPredictions(preds);
+            }
+            initializeFormWithAI(specFolio.template, preds, specFolio.metadata);
+          } else if (specFolio.template_id) {
+            await fetchTemplate(specFolio.template_id, specFolio, parsedPreds);
+          } else {
+            // Fallback via batches query
+            let templateFound = false;
+            if (specFolio.batch_id) {
+              const batchRes = await supabase
+                .from("batches")
+                .select("template_id")
+                .eq("id", specFolio.batch_id)
+                .single();
+              if (batchRes.data?.template_id) {
+                await fetchTemplate(batchRes.data.template_id, specFolio, parsedPreds);
+                templateFound = true;
+              }
+            }
+
+            if (!templateFound) {
+              const { data: firstTpl } = await supabase.from("templates").select("*").limit(1).single();
+              if (firstTpl) {
+                setTemplate(firstTpl);
+                let preds = parsedPreds;
+                if (preds.length === 0 && Array.isArray(firstTpl.fields) && firstTpl.fields.length > 0) {
+                  preds = buildFallbackTemplatePredictions(firstTpl.fields, specFolio.id);
+                  setAiPredictions(preds);
+                }
+                initializeFormWithAI(firstTpl, preds, specFolio.metadata);
+              }
+            }
           }
         } else {
           setFolio(null);
@@ -501,7 +561,7 @@ export default function VisorDual() {
       }
       setLoading(false);
     },
-    [supabase, fetchTemplate]
+    [supabase, fetchTemplate, initializeFormWithAI]
   );
 
   useEffect(() => {
@@ -1094,7 +1154,16 @@ export default function VisorDual() {
               );
             })
           ) : (
-            <div className="text-gray-500 text-sm">Cargando campos...</div>
+            <div className="p-6 text-center text-gray-500">
+              <p className="font-semibold text-gray-700 mb-1">No se encontró una plantilla asignada a este folio</p>
+              <p className="text-xs text-gray-500 mb-4">El lote fue subido sin una plantilla de indexación o la plantilla fue eliminada.</p>
+              <button
+                onClick={() => router.push(`/${subdomain}/ingest`)}
+                className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Ir al Hub de Ingesta
+              </button>
+            </div>
           )}
         </div>
 

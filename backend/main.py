@@ -646,6 +646,41 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
 
         ensure_folio_ai_predictions(folio_data, tenant_id)
 
+        # Attach template_id and full template object
+        template_id = None
+        template_obj = None
+        batch_id = folio_data.get("batch_id")
+        if batch_id:
+            try:
+                b_res = (
+                    supabase.table("batches")
+                    .select("template_id")
+                    .eq("id", batch_id)
+                    .eq("tenant_id", tenant_id)
+                    .execute()
+                )
+                if b_res.data and len(b_res.data) > 0:
+                    template_id = b_res.data[0].get("template_id")
+            except Exception as b_err:
+                print(f"Notice fetching batch template_id in get_next_folio: {b_err}")
+
+        if template_id:
+            try:
+                t_res = (
+                    supabase.table("templates")
+                    .select("*")
+                    .eq("id", template_id)
+                    .eq("tenant_id", tenant_id)
+                    .execute()
+                )
+                if t_res.data and len(t_res.data) > 0:
+                    template_obj = t_res.data[0]
+            except Exception as t_err:
+                print(f"Notice fetching template object in get_next_folio: {t_err}")
+
+        folio_data["template_id"] = template_id
+        folio_data["template"] = template_obj
+
         if folio_data.get("r2_url"):
             try:
                 view_url = s3_client.generate_presigned_url(
@@ -704,6 +739,41 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
             print(f"Notice releasing other in_progress folios in get_folio_by_id: {cleanup_err}")
 
         ensure_folio_ai_predictions(folio_data, tenant_id)
+
+        # Attach template_id and full template object
+        template_id = None
+        template_obj = None
+        batch_id = folio_data.get("batch_id")
+        if batch_id:
+            try:
+                b_res = (
+                    supabase.table("batches")
+                    .select("template_id")
+                    .eq("id", batch_id)
+                    .eq("tenant_id", tenant_id)
+                    .execute()
+                )
+                if b_res.data and len(b_res.data) > 0:
+                    template_id = b_res.data[0].get("template_id")
+            except Exception as b_err:
+                print(f"Notice fetching batch template_id in get_folio_by_id: {b_err}")
+
+        if template_id:
+            try:
+                t_res = (
+                    supabase.table("templates")
+                    .select("*")
+                    .eq("id", template_id)
+                    .eq("tenant_id", tenant_id)
+                    .execute()
+                )
+                if t_res.data and len(t_res.data) > 0:
+                    template_obj = t_res.data[0]
+            except Exception as t_err:
+                print(f"Notice fetching template object in get_folio_by_id: {t_err}")
+
+        folio_data["template_id"] = template_id
+        folio_data["template"] = template_obj
 
         if folio_data.get("r2_url"):
             try:
