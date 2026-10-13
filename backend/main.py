@@ -177,12 +177,21 @@ async def process_batch_task(batch_id: str, files: List[str], user_client: Clien
 @app.post("/api/v1/ingest")
 async def ingest_batch(request: IngestRequest, background_tasks: BackgroundTasks, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
+        batch_res = supabase.table("batches").select("id, template_id, tenant_id").eq("id", request.batch_id).eq("tenant_id", auth["tenant_id"]).execute()
+        if not batch_res.data or len(batch_res.data) == 0:
+            raise HTTPException(status_code=404, detail="El lote especificado no existe.")
+        batch_obj = batch_res.data[0]
+        if not batch_obj.get("template_id"):
+            raise HTTPException(status_code=400, detail="El lote no tiene un formulario/plantilla asignado. No se pueden subir folios sin plantilla.")
+
         # Confirm upload and dispatch the background task
         background_tasks.add_task(process_batch_task, request.batch_id, request.files, auth["user_client"], auth["tenant_id"])
         
         return {"status": "success", "message": f"Batch {request.batch_id} ingestion task dispatched."}
     except Exception as e:
-        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in ingest_batch: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/upload/url")
 async def get_upload_url(filename: str, content_type: str, auth: Dict[str, Any] = Depends(get_auth_context)):

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createBrowserClient } from '@supabase/ssr';
 
+import { AlertCircle } from "lucide-react";
 import TemplateBuilder from "./TemplateBuilder";
 
 export default function IngestHub() {
@@ -155,11 +156,11 @@ export default function IngestHub() {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTemplate) {
-      alert("Please select a template first.");
+      alert("Debes seleccionar una plantilla antes de subir folios.");
       return;
     }
     if (files.length === 0) {
-      alert("Please select at least one file.");
+      alert("Debes seleccionar al menos un archivo.");
       return;
     }
     
@@ -216,11 +217,11 @@ export default function IngestHub() {
 
       if (!ingestRes.ok) throw new Error("Failed to dispatch ingestion");
       
-      alert("Upload completed successfully!");
+      alert("¡Lote y folios subidos exitosamente!");
       setFiles([]);
       fetchRecentBatches();
     } catch (error: any) {
-      alert(`Error during upload: ${error.message}`);
+      alert(`Error durante la subida: ${error.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -256,13 +257,45 @@ export default function IngestHub() {
       {activeTab === 'upload' && (
         <div>
           <h2 className="text-2xl font-semibold mb-4">Subir Nuevo Lote</h2>
+
+          {templates.length === 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start space-x-3 text-amber-900 shadow-sm">
+              <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-sm">
+                  No tienes formularios ni plantillas configuradas todavía. Para poder subir e indexar folios, primero debes crear al menos una plantilla de indexación.
+                </p>
+                <div className="mt-3">
+                  {userRole !== 'archivist' ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('templates')}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded shadow transition"
+                    >
+                      Crear mi Primera Plantilla
+                    </button>
+                  ) : (
+                    <p className="text-xs text-amber-700 italic">
+                      Nota: Un Administrador debe crear la plantilla de indexación para tu organización antes de que puedas subir folios.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleUpload} className="mb-8 space-y-4 max-w-md">
             <div>
-              <label className="block text-sm font-medium mb-1">Seleccionar Plantilla</label>
+              <label className="block text-sm font-medium mb-1">
+                Seleccionar Plantilla <span className="text-red-500 text-xs font-semibold">* Requerido</span>
+              </label>
               <select 
-                className="w-full border rounded p-2"
+                className={`w-full border rounded p-2 transition ${
+                  templates.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                }`}
                 value={selectedTemplate}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
+                disabled={templates.length === 0}
                 required
               >
                 <option value="">-- Selecciona una plantilla --</option>
@@ -270,6 +303,9 @@ export default function IngestHub() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              {!selectedTemplate && templates.length > 0 && (
+                <p className="text-xs text-amber-600 mt-1">Debes seleccionar una plantilla para habilitar la subida.</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Archivos</label>
@@ -277,13 +313,20 @@ export default function IngestHub() {
                 type="file" 
                 multiple 
                 onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                className="w-full border rounded p-2" 
+                disabled={templates.length === 0}
+                className={`w-full border rounded p-2 ${
+                  templates.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                }`} 
               />
             </div>
             <button 
               type="submit" 
-              disabled={isUploading}
-              className={`px-4 py-2 rounded text-white ${isUploading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+              disabled={isUploading || !selectedTemplate || files.length === 0 || templates.length === 0}
+              className={`px-4 py-2 rounded text-white font-medium transition ${
+                isUploading || !selectedTemplate || files.length === 0 || templates.length === 0
+                  ? 'bg-gray-400 opacity-60 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 cursor-pointer shadow'
+              }`}
             >
               {isUploading ? 'Subiendo...' : 'Subir Archivos'}
             </button>
