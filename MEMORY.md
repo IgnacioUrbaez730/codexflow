@@ -15,6 +15,12 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Control de RAM y Cuellos de Botella:** La arquitectura se refactorizó para correr con un Semáforo de concurrencia y un Streamer de CSV. Así aseguramos que el OCR y la descarga masiva no exploten el servidor gratuito de 512MB de Render.
 
 ## Próximos pasos (Pendientes)
+- **FASE DE GESTIÓN DOCUMENTAL E INTEROPERABILIDAD FAMILYSEARCH (Spec 012):**
+  - Espec formal creada: specs/012-folder-management-familysearch-interoperability/spec.md.
+  - Agrupación por Carpetas/Tomos (estilo DCam de FamilySearch) con metadatos de contexto (Parroquia, Años, Serie documental).
+  - Capacidad de asignar imágenes sueltas a tomos existentes sin reiniciar lotes.
+  - Soporte de múltiples actas/partidas por imagen física.
+  - Paquete de entrega estandarizado FamilySearch (DIP): Matriz Excel/CSV vinculada obligatoriamente con image_file_name + manifiesto de tomo.
 - **FASE DE CREACIÓN B2B (Spec 007):**
 - Tareas: Crear el plan técnico para `specs/007-b2b-tenant-management` (Creación manual de ONGs por el Superadmin, Suspensión, Soporte y Reenvío de Invitaciones).
 
