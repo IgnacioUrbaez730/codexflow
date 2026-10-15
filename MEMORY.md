@@ -14,6 +14,20 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Desvío del Roadmap (Sin Pasarela de Pagos):** Por instrucciones del fundador, el SaaS no tendrá Stripe por ahora. Se venderá la licencia directamente a la ONG (uso exclusivo/marca blanca).
 - **Control de RAM y Cuellos de Botella:** La arquitectura se refactorizó para correr con un Semáforo de concurrencia y un Streamer de CSV. Así aseguramos que el OCR y la descarga masiva no exploten el servidor gratuito de 512MB de Render.
 
+## Módulo 12 COMPLETADO: Gestión de Tomos/Carpetas (DCam) e Interoperabilidad FamilySearch (DIP)
+
+- **Árbol Jerárquico DCam:** Tabla `document_folders` en Supabase con soporte jerárquico multinivel (Diócesis > Parroquia > Serie > Tomo), RLS multi-tenant y roles RBAC (solo admin y archivist crean/editan; digitizer transcribe).
+- **Folios Sueltos y Retrocompatibilidad:** Migración automática que asocia folios existentes a la carpeta virtual "Sin Clasificar (Migración inicial)". Capacidad de mover folios sueltos a tomos existentes en lote heredando su plantilla y asignando secuencia correlativa final (`sequence_order`).
+- **Captura Multi-Partida y Atajos FamilySearch:** Pestañas dinámicas en el Visor Dual (`[Partida 1]`, `[Partida 2]`, ...) con botón `+ Agregar Partida` y atajo `Alt + N`. Persistencia atómica por persona en `folio_entries`. Atajos estándar: `Ctrl + U` (Ilegible), `Ctrl + B` (En Blanco) y `Ctrl + D` (Duplicar valor anterior).
+- **Herencia Inmutable del Tomo:** El Visor hereda los metadatos del libro (Parroquia, Tomo, Años) mostrándolos en una tarjeta superior con candado y bloqueando campos coincidentes en la plantilla.
+- **Motor de Exportación e Interoperabilidad FamilySearch DIP:** Endpoint en streaming `GET /api/v1/folders/{id}/export-familysearch` que emite un archivo `.ZIP` consolidado conteniendo:
+  1. `matriz_indexacion.xlsx`: Excel con cabeceras formales y columna mandatoria `image_file_name`.
+  2. `matriz_indexacion.csv`: CSV delimitado por `;` con BOM UTF-8.
+  3. `export_gedcom.ged`: Archivo genealógico conforme a la norma internacional GEDCOM 5.5.1 (`INDI`, `CHR`, `BIRT`, `MARR`, `DEAT`, `OBJE`).
+  4. `manifest.json`: Ficha técnica de control de calidad con pares de nomenclatura canónica `[CodOrg]_[Serie]_[Tomo]_[Folio]`.
+  5. Subcarpeta `images/` con las fotos en alta resolución (opcional en paquete integral).
+- **Auditoría de Calidad:** Endpoint `GET /api/v1/folders/{id}/pre-export-summary` y diálogo modal `ExportFamilySearchModal.tsx` con semáforo de calidad que alerta sobre partidas pendientes/dudosas antes de descargar.
+
 ## Próximos pasos (Pendientes)
 - **FASE DE GESTIÓN DOCUMENTAL E INTEROPERABILIDAD FAMILYSEARCH (Spec 012):**
   - Espec formal creada: specs/012-folder-management-familysearch-interoperability/spec.md.
