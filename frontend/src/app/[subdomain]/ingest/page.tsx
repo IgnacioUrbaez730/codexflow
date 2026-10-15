@@ -14,11 +14,13 @@ import {
   Square, 
   Pencil, 
   ExternalLink,
-  Plus
+  Plus,
+  Download
 } from "lucide-react";
 import TemplateBuilder from "./TemplateBuilder";
 import DocumentFolderTree from "@/components/folders/DocumentFolderTree";
 import CreateFolderModal from "@/components/folders/CreateFolderModal";
+import ExportFamilySearchModal from "@/components/folders/ExportFamilySearchModal";
 import { DocumentFolder, FolioItem } from "@/components/folders/types";
 
 export default function IngestHub() {
@@ -64,6 +66,8 @@ export default function IngestHub() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [folderToEdit, setFolderToEdit] = useState<DocumentFolder | null>(null);
   const [parentForCreate, setParentForCreate] = useState<DocumentFolder | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [userToken, setUserToken] = useState<string | null>(null);
 
   const canManageFolders = userRole === "admin" || userRole === "archivist" || userRole === "superadmin";
 
@@ -108,6 +112,7 @@ export default function IngestHub() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) return;
+      setUserToken(token);
 
       const res = await fetch("/api/v1/folders/tree", {
         headers: { Authorization: `Bearer ${token}` },
@@ -637,20 +642,33 @@ export default function IngestHub() {
                       )}
                     </div>
 
-                    {canManageFolders && !selectedFolder.metadata?.is_virtual_unclassified && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFolderToEdit(selectedFolder);
-                          setParentForCreate(null);
-                          setIsCreateModalOpen(true);
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        <span>Editar Tomo</span>
-                      </button>
-                    )}
+                    <div className="flex items-center space-x-2">
+                      {selectedFolder.folder_type === "tome" && !selectedFolder.metadata?.is_virtual_unclassified && (
+                        <button
+                          type="button"
+                          onClick={() => setIsExportModalOpen(true)}
+                          className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Exportar DIP FamilySearch</span>
+                        </button>
+                      )}
+
+                      {canManageFolders && !selectedFolder.metadata?.is_virtual_unclassified && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFolderToEdit(selectedFolder);
+                            setParentForCreate(null);
+                            setIsCreateModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1 cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Editar Tomo</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Folios in Selected Folder */}
@@ -1151,6 +1169,14 @@ export default function IngestHub() {
         parentFolder={parentForCreate}
         tree={folderTree}
         templates={templates}
+      />
+
+      {/* Modal Exportar DIP FamilySearch */}
+      <ExportFamilySearchModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        folder={selectedFolder}
+        authToken={userToken}
       />
     </div>
   );

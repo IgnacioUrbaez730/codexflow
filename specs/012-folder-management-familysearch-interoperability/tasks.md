@@ -65,12 +65,12 @@ Las tareas están organizadas en 5 fases secuenciales. Ninguna fase debe iniciar
 
 ## Fase 5: Motor de Exportación e Interoperabilidad FamilySearch (DIP)
 
-- [ ] **T05-BE-01**: Implementar generador de matrices tabulares `FamilySearchMatrixExporter`:
+- [x] **T05-BE-01**: Implementar generador de matrices tabulares `FamilySearchMatrixExporter`:
   - Archivo `.xlsx` estilizado con cabeceras formales y columna mandatoria `image_file_name`.
   - Archivo `.csv` con delimitador `;` y codificación UTF-8 con BOM.
-- [ ] **T05-BE-02**: Implementar generador de archivo genealógico `GEDCOMExporter` conforme a la especificación GEDCOM 5.5.1 (cabecera `HEAD`, registros `INDI`, eventos `BIRT`/`CHR`/`MARR`/`DEAT`, y vínculos a objetos multimedia `OBJE`).
-- [ ] **T05-BE-03**: Implementar generador del archivo `manifest.json` que detalle metadatos del tomo, fechas, resúmenes estadísticos de transcripción y pares `original_filename` $\leftrightarrow$ `canonical_filename`.
-- [ ] **T05-BE-04**: Desarrollar endpoint de auditoría previa `GET /api/v1/folders/{id}/pre-export-summary` con conteos de partidas completadas vs. en revisión / dudosas.
-- [ ] **T05-BE-05**: Implementar endpoint `GET /api/v1/folders/{id}/export-familysearch` en FastAPI con `StreamingResponse`, descargando en chunks las imágenes desde Cloudflare R2 y construyendo el `.ZIP` en memoria acotada (streaming chunked).
-- [ ] **T05-FE-01**: Crear diálogo modal en frontend `ExportFamilySearchModal` que muestre el resumen de control de calidad (alertas de partidas dudosas) y el botón de descarga del paquete DIP.
-- [ ] **T05-QA-01**: Ejecutar pruebas integrales E2E de exportación: validar integridad del ZIP, correspondencia de nombres en Excel vs. archivos de imagen, y conformidad sintáctica del GEDCOM.
+- [x] **T05-BE-02**: Implementar generador de archivo genealógico `GEDCOMExporter` conforme a la especificación GEDCOM 5.5.1 (cabecera `HEAD`, registros `INDI`, eventos `BIRT`/`CHR`/`MARR`/`DEAT`, y vínculos a objetos multimedia `OBJE`).
+- [x] **T05-BE-03**: Implementar generador del archivo `manifest.json` que detalle metadatos del tomo, fechas, resúmenes estadísticos de transcripción y pares `original_filename` $\leftrightarrow$ `canonical_filename`.
+- [x] **T05-BE-04**: Desarrollar endpoint de auditoría previa `GET /api/v1/folders/{id}/pre-export-summary` con conteos de partidas completadas vs. en revisión / dudosas.
+- [x] **T05-BE-05**: Implementar endpoint `GET /api/v1/folders/{id}/export-familysearch` en FastAPI con `StreamingResponse`, descargando en chunks las imágenes desde Cloudflare R2 y construyendo el `.ZIP` en memoria acotada (streaming chunked).
+- [x] **T05-FE-01**: Crear diálogo modal en frontend `ExportFamilySearchModal` que muestre el resumen de control de calidad (alertas de partidas dudosas) y el botón de descarga del paquete DIP.
+- [x] **T05-QA-01**: Ejecutar pruebas integrales E2E de exportación: validar integridad del ZIP, correspondencia de nombres en Excel vs. archivos de imagen, y conformidad sintáctica del GEDCOM.

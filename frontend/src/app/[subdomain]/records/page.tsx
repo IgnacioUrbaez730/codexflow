@@ -23,8 +23,11 @@ import {
   ChevronDown,
   FileSpreadsheet,
   Loader2,
-  Trash2
+  Trash2,
+  ShieldCheck
 } from "lucide-react";
+import ExportFamilySearchModal from "@/components/folders/ExportFamilySearchModal";
+import { DocumentFolder } from "@/components/folders/types";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
 import { FilterControlsPopover } from "../../../components/viewer/FilterControlsPopover";
@@ -89,6 +92,10 @@ export default function RecordsPage() {
   const [exportingFormat, setExportingFormat] = useState<"xlsx" | "csv" | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [availableTomes, setAvailableTomes] = useState<DocumentFolder[]>([]);
+  const [selectedTomeForExport, setSelectedTomeForExport] = useState<DocumentFolder | null>(null);
+  const [isFamilySearchModalOpen, setIsFamilySearchModalOpen] = useState<boolean>(false);
 
   // Modal & Viewer States
   const [selectedRecord, setSelectedRecord] = useState<RecordData | null>(null);
@@ -145,6 +152,8 @@ export default function RecordsPage() {
         return;
       }
 
+      setAuthToken(session.access_token);
+
       // Check role
       try {
         const res = await fetch("/api/auth/me", {
@@ -174,6 +183,35 @@ export default function RecordsPage() {
         }
       } catch (err) {
         console.error("Error fetching batches:", err);
+      }
+
+      // Fetch tomes for FamilySearch export
+      try {
+        const treeRes = await fetch("/api/v1/folders/tree", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (treeRes.ok) {
+          const treeJson = await treeRes.json();
+          const treeData: DocumentFolder[] = treeJson.data || [];
+          const tomes: DocumentFolder[] = [];
+          const traverse = (nodes: DocumentFolder[]) => {
+            for (const n of nodes) {
+              if (n.folder_type === "tome" && !n.metadata?.is_virtual_unclassified) {
+                tomes.push(n);
+              }
+              if (n.children && n.children.length > 0) {
+                traverse(n.children);
+              }
+            }
+          };
+          traverse(treeData);
+          setAvailableTomes(tomes);
+          if (tomes.length > 0) {
+            setSelectedTomeForExport(tomes[0]);
+          }
+        }
+      } catch (treeErr) {
+        console.error("Error fetching tomes in records:", treeErr);
       }
     }
 
@@ -577,6 +615,28 @@ export default function RecordsPage() {
                 <div>
                   <div className="font-medium">Exportar a CSV (.csv)</div>
                   <div className="text-xs text-gray-400">Delimitado por ';' (Excel)</div>
+                </div>
+              </button>
+
+              <div className="my-1 border-t border-gray-100" />
+
+              <button
+                onClick={() => {
+                  setIsExportMenuOpen(false);
+                  if (availableTomes.length > 0) {
+                    setIsFamilySearchModalOpen(true);
+                  } else {
+                    alert("No hay tomos catalogados para exportar en formato DIP FamilySearch. Ve a Ingesta > Carpetas para catalogar tomos.");
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 transition cursor-pointer text-left"
+              >
+                <div className="p-1.5 rounded-lg bg-emerald-600 text-white">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-medium text-emerald-800">Paquete FamilySearch (DIP)</div>
+                  <div className="text-xs text-gray-400">Excel, CSV, GEDCOM, ZIP</div>
                 </div>
               </button>
             </div>
@@ -1201,6 +1261,14 @@ export default function RecordsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal Exportación FamilySearch (DIP) */}
+      <ExportFamilySearchModal
+        isOpen={isFamilySearchModalOpen}
+        onClose={() => setIsFamilySearchModalOpen(false)}
+        folder={selectedTomeForExport}
+        authToken={authToken}
+      />
     </div>
   );
 }

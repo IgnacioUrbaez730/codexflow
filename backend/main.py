@@ -7,6 +7,7 @@ from botocore.client import Config
 from datetime import datetime, timedelta, timezone
 import json
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, Query
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client, ClientOptions
 from typing import List, Optional, Dict, Any
@@ -3143,6 +3144,197 @@ async def update_single_folio_entry(
         raise HTTPException(status_code=404, detail="Partida no encontrada")
 
     return {"status": "success", "data": res.data[0]}
+
+
+# --------------------------------------------------------------------------
+# FamilySearch DIP Interoperability & Export Endpoints
+# --------------------------------------------------------------------------
+
+try:
+    from exporters.familysearch import (
+        generate_familysearch_matrix,
+        generate_gedcom_551,
+        generate_manifest_json
+    )
+except ImportError:
+    from backend.exporters.familysearch import (
+        generate_familysearch_matrix,
+        generate_gedcom_551,
+        generate_manifest_json
+    )
+
+import zipfile
+
+
+@app.get("/api/v1/folders/{folder_id}/pre-export-summary")
+async def get_folder_pre_export_summary(
+    folder_id: str,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+
+    # 1. Obtener la carpeta (validar tenant_id)
+    folder_res = client.table("document_folders").select("*").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not folder_res.data:
+        raise HTTPException(status_code=404, detail="Carpeta o tomo no encontrado")
+
+    folder = folder_res.data[0]
+    folder_name = folder.get("name", "Tomo")
+
+    # 2. Obtener todos los folios asignados a esta carpeta
+    folios_res = client.table("folios").select("id, folder_id, status, sequence_order, original_filename, canonical_filename").eq("folder_id", folder_id).execute()
+    folios = folios_res.data or []
+    folio_ids = [f["id"] for f in folios]
+
+    total_folios = len(folios)
+    total_entries = 0
+    completed_entries = 0
+    revision_entries = 0
+    pending_entries = 0
+    doubtful_folios = []
+
+    if folio_ids:
+        # Obtener partidas de estos folios
+        entries_res = client.table("folio_entries").select("id, folio_id, entry_number, status, metadata").in_("folio_id", folio_ids).eq("tenant_id", tenant_id).execute()
+        entries = entries_res.data or []
+
+        # Si no hay entradas en folio_entries, sintetizar desde folios
+        if not entries:
+            for f in folios:
+                f_status = f.get("status") or "pending"
+                if f_status == "completed":
+                    completed_entries += 1
+                elif f_status in ("revision", "doubtful", "dudoso"):
+                    revision_entries += 1
+                    doubtful_folios.append(f)
+                else:
+                    pending_entries += 1
+                total_entries += 1
+        else:
+            total_entries = len(entries)
+            folio_obj_map = {f["id"]: f for f in folios}
+            seen_doubtful_folios = set()
+            for e in entries:
+                e_status = (e.get("status") or "pending").lower()
+                if e_status == "completed":
+                    completed_entries += 1
+                elif e_status in ("revision", "doubtful", "dudoso"):
+                    revision_entries += 1
+                    fid = e.get("folio_id")
+                    if fid and fid not in seen_doubtful_folios:
+                        seen_doubtful_folios.add(fid)
+                        doubtful_folios.append(folio_obj_map.get(fid, {"id": fid}))
+                else:
+                    pending_entries += 1
+
+    has_revisions = revision_entries > 0
+
+    return {
+        "status": "success",
+        "data": {
+            "tome_id": folder_id,
+            "tome_name": folder_name,
+            "folder_type": folder.get("folder_type"),
+            "total_folios": total_folios,
+            "total_entries": total_entries,
+            "completed_entries": completed_entries,
+            "revision_entries": revision_entries,
+            "pending_entries": pending_entries,
+            "has_revisions": has_revisions,
+            "doubtful_folios_count": len(doubtful_folios),
+            "ready_for_export": total_folios > 0
+        }
+    }
+
+
+@app.get("/api/v1/folders/{folder_id}/export-familysearch")
+async def export_familysearch_package(
+    folder_id: str,
+    include_images: bool = Query(False, description="Incluir archivos de fotos de alta resolución en subcarpeta images/"),
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+
+    # 1. Obtener carpeta y contexto
+    folder_res = client.table("document_folders").select("*").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not folder_res.data:
+        raise HTTPException(status_code=404, detail="Carpeta o tomo no encontrado")
+
+    folder = folder_res.data[0]
+    tome_metadata = _resolve_folder_inherited_context(client, folder_id, tenant_id)
+    tome_metadata["folder_name"] = folder.get("name", "Tomo")
+
+    # 2. Folios del tomo
+    folios_res = client.table("folios").select("*").eq("folder_id", folder_id).order("sequence_order", desc=False).execute()
+    folios = folios_res.data or []
+    folio_ids = [f["id"] for f in folios]
+
+    # 3. Partidas
+    entries = []
+    if folio_ids:
+        entries_res = client.table("folio_entries").select("*").in_("folio_id", folio_ids).eq("tenant_id", tenant_id).order("entry_number").execute()
+        entries = entries_res.data or []
+
+    # Si no hay entradas en folio_entries, sintetizar a partir de metadata de folios
+    if not entries and folios:
+        for f in folios:
+            f_meta = f.get("metadata") or {}
+            entries.append({
+                "id": f"syn-{f['id']}",
+                "folio_id": f["id"],
+                "entry_number": 1,
+                "status": f.get("status") or "completed",
+                "metadata": f_meta
+            })
+
+    total_completed = sum(1 for e in entries if (e.get("status") or "").lower() == "completed")
+    total_revision = sum(1 for e in entries if (e.get("status") or "").lower() in ("revision", "doubtful", "dudoso"))
+
+    # 4. Generar componentes de datos
+    excel_bytes, csv_bytes = generate_familysearch_matrix(entries, folios, tome_metadata)
+    gedcom_str = generate_gedcom_551(entries, folios, tome_metadata)
+    manifest_data = generate_manifest_json(folder, folios, entries, total_completed, total_revision)
+    manifest_bytes = json.dumps(manifest_data, ensure_ascii=False, indent=2).encode("utf-8")
+
+    # 5. Generar paquete ZIP
+    zip_bio = io.BytesIO()
+    with zipfile.ZipFile(zip_bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", manifest_bytes)
+        zf.writestr("matriz_indexacion.xlsx", excel_bytes)
+        zf.writestr("matriz_indexacion.csv", csv_bytes)
+        zf.writestr("export_gedcom.ged", gedcom_str.encode("utf-8"))
+
+        if include_images:
+            bucket_name = os.getenv("R2_BUCKET_NAME")
+            for f in folios:
+                canonical_name = f.get("canonical_filename") or f.get("original_filename") or f"folio_{f['id']}.jpg"
+                r2_key = f.get("r2_url") or f.get("file_name") or f.get("original_filename")
+                if bucket_name and r2_key:
+                    # Limpiar r2_key si contiene URL completa
+                    if "/" in r2_key and "://" in r2_key:
+                        r2_key = r2_key.split(f"{bucket_name}/")[-1]
+                    try:
+                        obj = s3_client.get_object(Bucket=bucket_name, Key=r2_key)
+                        img_bytes = obj["Body"].read()
+                        zf.writestr(f"images/{canonical_name}", img_bytes)
+                    except Exception as s3_err:
+                        print(f"Warning streaming image {r2_key} for DIP export: {s3_err}")
+
+    zip_bio.seek(0)
+    zip_bytes = zip_bio.getvalue()
+
+    raw_name = folder.get("name", "Tomo").replace(" ", "_")
+    safe_name = re.sub(r"[^\w\-_\.]", "", raw_name) or "Tomo"
+    filename = f"{safe_name}_FamilySearch_DIP.zip"
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
 
 
 
