@@ -106,7 +106,7 @@ export default function IngestHub() {
     return foundId;
   }, [folderTree]);
 
-  const fetchFoldersTree = useCallback(async () => {
+  const fetchFoldersTree = useCallback(async (explicitTenantId?: string) => {
     setLoadingFolders(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -114,8 +114,14 @@ export default function IngestHub() {
       if (!token) return;
       setUserToken(token);
 
+      const tid = explicitTenantId || tenantId;
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (tid) {
+        headers["X-Tenant-ID"] = tid;
+      }
+
       const res = await fetch("/api/v1/folders/tree", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
 
       if (res.ok) {
@@ -150,7 +156,7 @@ export default function IngestHub() {
     } finally {
       setLoadingFolders(false);
     }
-  }, [supabase]);
+  }, [supabase, tenantId]);
 
   const fetchFolderFolios = useCallback(async (folderId: string) => {
     setLoadingFolderFolios(true);
@@ -305,8 +311,21 @@ export default function IngestHub() {
           .eq("user_id", session.user.id)
           .single();
 
-        if (profile) {
-          setTenantId(profile.tenant_id);
+        let resolvedTenantId = profile?.tenant_id;
+        if (!resolvedTenantId && subdomain) {
+          const { data: tenantData } = await supabase
+            .from("tenants")
+            .select("id")
+            .eq("subdomain", subdomain)
+            .single();
+          if (tenantData?.id) {
+            resolvedTenantId = tenantData.id;
+          }
+        }
+
+        if (resolvedTenantId) {
+          setTenantId(resolvedTenantId);
+          fetchFoldersTree(resolvedTenantId);
         }
       }
     };
@@ -515,7 +534,7 @@ export default function IngestHub() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Hub de Ingesta & Archivo</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Gestión documental DCam, administración de tomos y digitalización archivística
+            Gestión documental, administración de tomos y digitalización archivística
           </p>
         </div>
       </div>
@@ -531,7 +550,7 @@ export default function IngestHub() {
           onClick={() => setActiveTab("folders")}
         >
           <Layers className="w-4 h-4" />
-          <span>Tomos y Carpetas (DCam)</span>
+          <span>Tomos y Carpetas</span>
         </button>
         <button
           className={`py-2 px-4 transition-colors flex items-center space-x-2 ${
@@ -558,7 +577,7 @@ export default function IngestHub() {
             className={`py-2 px-4 transition-colors flex items-center space-x-2 ${
               activeTab === "templates"
                 ? "border-b-2 border-blue-600 text-blue-600 font-bold"
-                : "text-gray-600 hover:text-gray-900"
+              : "text-gray-600 hover:text-gray-900"
             }`}
             onClick={() => setActiveTab("templates")}
           >
@@ -567,7 +586,7 @@ export default function IngestHub() {
         )}
       </div>
 
-      {/* SPEC-012: TAB 1 - TOMOS Y CARPETAS (DCAM) */}
+      {/* SPEC-012: TAB 1 - TOMOS Y CARPETAS */}
       {activeTab === "folders" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Panel: Tree */}
@@ -1169,6 +1188,7 @@ export default function IngestHub() {
         parentFolder={parentForCreate}
         tree={folderTree}
         templates={templates}
+        tenantId={tenantId}
       />
 
       {/* Modal Exportar DIP FamilySearch */}
@@ -1177,6 +1197,7 @@ export default function IngestHub() {
         onClose={() => setIsExportModalOpen(false)}
         folder={selectedFolder}
         authToken={userToken}
+        tenantId={tenantId}
       />
     </div>
   );

@@ -35,6 +35,7 @@ interface ExportFamilySearchModalProps {
   onClose: () => void;
   folder: DocumentFolder | null;
   authToken?: string | null;
+  tenantId?: string;
 }
 
 export default function ExportFamilySearchModal({
@@ -42,6 +43,7 @@ export default function ExportFamilySearchModal({
   onClose,
   folder,
   authToken,
+  tenantId,
 }: ExportFamilySearchModalProps) {
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [summary, setSummary] = useState<PreExportSummary | null>(null);
@@ -66,10 +68,10 @@ export default function ExportFamilySearchModal({
       setLoadingSummary(true);
       setSummaryError(null);
       try {
-        const headers: Record<string, string> = {};
-        if (authToken) {
-          headers["Authorization"] = `Bearer ${authToken}`;
-        }
+        const headers: Record<string, string> = {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
+        };
         const res = await fetch(`/api/v1/folders/${folder?.id}/pre-export-summary`, {
           headers,
         });
@@ -99,7 +101,7 @@ export default function ExportFamilySearchModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, folder, authToken]);
+  }, [isOpen, folder, authToken, tenantId]);
 
   if (!isOpen || !folder) return null;
 
@@ -109,10 +111,10 @@ export default function ExportFamilySearchModal({
       setExportError(null);
 
       const includeImages = packageType === "dip_full";
-      const headers: Record<string, string> = {};
-      if (authToken) {
-        headers["Authorization"] = `Bearer ${authToken}`;
-      }
+      const headers: Record<string, string> = {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
+      };
 
       const res = await fetch(
         `/api/v1/folders/${folder.id}/export-familysearch?include_images=${includeImages}`,

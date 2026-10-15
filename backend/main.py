@@ -2696,6 +2696,7 @@ async def delete_superadmin_demo_request(
 @app.post("/api/v1/folders")
 async def create_folder(
     folder_in: FolderCreate,
+    x_tenant_id: Optional[str] = Header(None),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     role = auth.get("role")
@@ -2705,32 +2706,56 @@ async def create_folder(
             detail="Permiso denegado: solo administradores o archivistas pueden crear carpetas"
         )
     
-    tenant_id = auth["tenant_id"]
-    client = auth.get("user_client") or supabase
-    
-    # Si viene parent_id, verificar que exista y pertenezca al mismo tenant_id
-    if folder_in.parent_id:
-        parent_check = client.table("document_folders").select("id").eq("id", folder_in.parent_id).eq("tenant_id", tenant_id).execute()
-        if not parent_check.data:
-            raise HTTPException(
-                status_code=404,
-                detail="La carpeta padre especificada no existe o no pertenece a la organización"
-            )
-            
-    folder_data = {
-        "tenant_id": tenant_id,
-        "parent_id": folder_in.parent_id,
-        "name": folder_in.name,
-        "folder_type": folder_in.folder_type.value if hasattr(folder_in.folder_type, "value") else str(folder_in.folder_type),
-        "metadata": folder_in.metadata or {},
-        "created_by": auth.get("user_id")
-    }
-    
-    res = client.table("document_folders").insert(folder_data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Error al crear la carpeta")
+    tenant_id = auth.get("tenant_id") or x_tenant_id
+    if not tenant_id and folder_in.metadata and isinstance(folder_in.metadata, dict):
+        tenant_id = folder_in.metadata.get("tenant_id")
         
-    return {"status": "success", "data": res.data[0]}
+    client = auth.get("user_client") or supabase
+
+    # Si aún no tenemos tenant_id y viene parent_id, intentar resolver del padre
+    if not tenant_id and folder_in.parent_id:
+        try:
+            parent_lookup = client.table("document_folders").select("tenant_id").eq("id", folder_in.parent_id).execute()
+            if parent_lookup.data and parent_lookup.data[0].get("tenant_id"):
+                tenant_id = parent_lookup.data[0].get("tenant_id")
+        except Exception:
+            pass
+
+    if not tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere especificar la organización (tenant_id)"
+        )
+
+    try:
+        # Si viene parent_id, verificar que exista y pertenezca al mismo tenant_id
+        if folder_in.parent_id:
+            parent_check = client.table("document_folders").select("id").eq("id", folder_in.parent_id).eq("tenant_id", tenant_id).execute()
+            if not parent_check.data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="La carpeta padre especificada no existe o no pertenece a la organización"
+                )
+                
+        folder_data = {
+            "tenant_id": tenant_id,
+            "parent_id": folder_in.parent_id,
+            "name": folder_in.name,
+            "folder_type": folder_in.folder_type.value if hasattr(folder_in.folder_type, "value") else str(folder_in.folder_type),
+            "metadata": folder_in.metadata or {},
+            "created_by": auth.get("user_id")
+        }
+        
+        res = client.table("document_folders").insert(folder_data).execute()
+        if not res.data:
+            raise HTTPException(status_code=400, detail="Error al crear la carpeta en la base de datos")
+            
+        return {"status": "success", "data": res.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating folder: {e}")
+        raise HTTPException(status_code=400, detail=f"Error al crear carpeta: {e}")
 
 
 @app.patch("/api/v1/folders/{folder_id}")
@@ -2814,8 +2839,11 @@ async def delete_folder(
 async def get_folders_tree(
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
-    tenant_id = auth["tenant_id"]
+    tenant_id = auth.get("tenant_id")
     client = auth.get("user_client") or supabase
+    
+    if not tenant_id:
+        return {"status": "success", "data": []}
     
     # 1. Obtener todas las carpetas del tenant
     folders_res = client.table("document_folders").select("*").eq("tenant_id", tenant_id).order("name").execute()
@@ -2884,10 +2912,17 @@ async def assign_folios_to_folder(
             detail="Permiso denegado: solo administradores o archivistas pueden reasignar folios"
         )
         
-    tenant_id = auth["tenant_id"]
+    tenant_id = auth.get("tenant_id")
     client = auth.get("user_client") or supabase
     
     # 1. Verificar que la carpeta exista y pertenezca al tenant_id
+    if not tenant_id:
+        f_check = client.table("document_folders").select("tenant_id").eq("id", folder_id).execute()
+        if f_check.data and f_check.data[0].get("tenant_id"):
+            tenant_id = f_check.data[0].get("tenant_id")
+        else:
+            raise HTTPException(status_code=400, detail="Se requiere especificar la organización (tenant_id)")
+
     folder_res = client.table("document_folders").select("*").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
     if not folder_res.data:
         raise HTTPException(status_code=404, detail="Carpeta o tomo de destino no encontrado")

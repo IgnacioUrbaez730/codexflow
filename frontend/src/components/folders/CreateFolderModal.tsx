@@ -13,6 +13,7 @@ interface CreateFolderModalProps {
   parentFolder?: DocumentFolder | null;
   tree: DocumentFolder[];
   templates: Array<{ id: string; name: string }>;
+  tenantId?: string;
 }
 
 export default function CreateFolderModal({
@@ -23,6 +24,7 @@ export default function CreateFolderModal({
   parentFolder,
   tree,
   templates,
+  tenantId,
 }: CreateFolderModalProps) {
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -138,6 +140,7 @@ export default function CreateFolderModal({
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
           },
           body: JSON.stringify({
             name: trimmedName,
@@ -158,7 +161,10 @@ export default function CreateFolderModal({
           name: trimmedName,
           folder_type: folderType,
           parent_id: parentId ? parentId : null,
-          metadata,
+          metadata: {
+            ...metadata,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
         };
 
         const res = await fetch("/api/v1/folders", {
@@ -166,6 +172,7 @@ export default function CreateFolderModal({
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
           },
           body: JSON.stringify(payload),
         });
