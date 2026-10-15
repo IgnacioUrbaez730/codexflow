@@ -62,6 +62,47 @@ class AIFeedbackPayload(BaseModel):
     predicted_value: Optional[str] = None
     actual_value: Optional[str] = None
 
+from enum import Enum
+
+class FolderType(str, Enum):
+    root = "root"
+    parish = "parish"
+    series = "series"
+    tome = "tome"
+
+class FolderMetadata(BaseModel):
+    tome_number: Optional[str] = None
+    year_start: Optional[int] = None
+    year_end: Optional[int] = None
+    location: Optional[str] = None
+    template_id: Optional[str] = None
+    parish_name: Optional[str] = None
+    diocese_name: Optional[str] = None
+
+class FolderCreate(BaseModel):
+    name: str
+    folder_type: FolderType = FolderType.tome
+    parent_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class FolderUpdate(BaseModel):
+    name: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class FolderResponse(BaseModel):
+    id: str
+    tenant_id: str
+    parent_id: Optional[str] = None
+    name: str
+    folder_type: str
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = None
+    total_folios: int = 0
+    total_entries: int = 0
+
+class AssignFoliosRequest(BaseModel):
+    folio_ids: List[str]
+
 async def get_auth_context(authorization: str = Header(...), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -2627,6 +2668,253 @@ async def delete_superadmin_demo_request(
         print(f"Warning deleting demo_request from R2: {e}")
 
     return {"status": "success"}
+
+
+# ==========================================
+# SPEC-012: FASE 2 - GESTIÓN DE CARPETAS Y TOMOS
+# ==========================================
+
+@app.post("/api/v1/folders")
+async def create_folder(
+    folder_in: FolderCreate,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("admin", "archivist", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: solo administradores o archivistas pueden crear carpetas"
+        )
+    
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    
+    # Si viene parent_id, verificar que exista y pertenezca al mismo tenant_id
+    if folder_in.parent_id:
+        parent_check = client.table("document_folders").select("id").eq("id", folder_in.parent_id).eq("tenant_id", tenant_id).execute()
+        if not parent_check.data:
+            raise HTTPException(
+                status_code=404,
+                detail="La carpeta padre especificada no existe o no pertenece a la organización"
+            )
+            
+    folder_data = {
+        "tenant_id": tenant_id,
+        "parent_id": folder_in.parent_id,
+        "name": folder_in.name,
+        "folder_type": folder_in.folder_type.value if hasattr(folder_in.folder_type, "value") else str(folder_in.folder_type),
+        "metadata": folder_in.metadata or {},
+        "created_by": auth.get("user_id")
+    }
+    
+    res = client.table("document_folders").insert(folder_data).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Error al crear la carpeta")
+        
+    return {"status": "success", "data": res.data[0]}
+
+
+@app.patch("/api/v1/folders/{folder_id}")
+async def update_folder(
+    folder_id: str,
+    folder_in: FolderUpdate,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("admin", "archivist", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: solo administradores o archivistas pueden modificar carpetas"
+        )
+        
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    
+    # Verificar existencia
+    existing = client.table("document_folders").select("id").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        
+    update_data = {}
+    if folder_in.name is not None:
+        update_data["name"] = folder_in.name
+    if folder_in.metadata is not None:
+        update_data["metadata"] = folder_in.metadata
+        
+    if not update_data:
+        return {"status": "success", "data": existing.data[0]}
+        
+    res = client.table("document_folders").update(update_data).eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Error al actualizar la carpeta")
+        
+    return {"status": "success", "data": res.data[0]}
+
+
+@app.delete("/api/v1/folders/{folder_id}")
+async def delete_folder(
+    folder_id: str,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("admin", "archivist", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: solo administradores o archivistas pueden eliminar carpetas"
+        )
+        
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    
+    # Verificar existencia
+    existing = client.table("document_folders").select("id").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        
+    # Validar que no tenga carpetas hijas
+    children = client.table("document_folders").select("id").eq("parent_id", folder_id).eq("tenant_id", tenant_id).execute()
+    if children.data and len(children.data) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
+        )
+        
+    # Validar que no tenga folios asignados
+    folios = client.table("folios").select("id").eq("folder_id", folder_id).execute()
+    if folios.data and len(folios.data) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
+        )
+        
+    client.table("document_folders").delete().eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    return {"status": "success", "message": "Carpeta eliminada exitosamente"}
+
+
+@app.get("/api/v1/folders/tree")
+async def get_folders_tree(
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    
+    # 1. Obtener todas las carpetas del tenant
+    folders_res = client.table("document_folders").select("*").eq("tenant_id", tenant_id).order("name").execute()
+    folders = folders_res.data or []
+    
+    # 2. Conteo de folios agrupados por folder_id
+    # Obtenemos los folios con folder_id no nulo para este tenant (vía batches si folios no tiene tenant_id directo, o folios directamente)
+    folios_counts: Dict[str, int] = {}
+    entries_counts: Dict[str, int] = {}
+    try:
+        folios_res = client.table("folios").select("id, folder_id").execute()
+        folder_folio_map = {}
+        for f in folios_res.data or []:
+            fid = f.get("folder_id")
+            if fid:
+                folios_counts[fid] = folios_counts.get(fid, 0) + 1
+                folder_folio_map[f["id"]] = fid
+
+        # Conteo de partidas por carpeta si folio_entries existe
+        try:
+            entries_res = client.table("folio_entries").select("id, folio_id").eq("tenant_id", tenant_id).execute()
+            for e in entries_res.data or []:
+                folio_id = e.get("folio_id")
+                fid = folder_folio_map.get(folio_id)
+                if fid:
+                    entries_counts[fid] = entries_counts.get(fid, 0) + 1
+        except Exception:
+            pass
+    except Exception:
+        pass
+        
+    # 3. Construir árbol jerárquico
+    nodes_by_id = {}
+    for f in folders:
+        fid = f["id"]
+        nodes_by_id[fid] = {
+            **f,
+            "total_folios": folios_counts.get(fid, 0),
+            "total_entries": entries_counts.get(fid, 0),
+            "children": []
+        }
+        
+    tree = []
+    for f in folders:
+        fid = f["id"]
+        node = nodes_by_id[fid]
+        parent_id = f.get("parent_id")
+        if parent_id and parent_id in nodes_by_id:
+            nodes_by_id[parent_id]["children"].append(node)
+        else:
+            tree.append(node)
+            
+    return {"status": "success", "data": tree}
+
+
+@app.post("/api/v1/folders/{folder_id}/assign-folios")
+async def assign_folios_to_folder(
+    folder_id: str,
+    request: AssignFoliosRequest,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("admin", "archivist", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: solo administradores o archivistas pueden reasignar folios"
+        )
+        
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    
+    # 1. Verificar que la carpeta exista y pertenezca al tenant_id
+    folder_res = client.table("document_folders").select("*").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    if not folder_res.data:
+        raise HTTPException(status_code=404, detail="Carpeta o tomo de destino no encontrado")
+        
+    folder = folder_res.data[0]
+    folder_meta = folder.get("metadata") or {}
+    template_id = folder_meta.get("template_id")
+    
+    if not request.folio_ids:
+        return {"status": "success", "message": "0 folios reasignados exitosamente a la carpeta"}
+        
+    # 2. Obtener el sequence_order máximo actual en esa carpeta
+    seq_res = client.table("folios").select("sequence_order").eq("folder_id", folder_id).order("sequence_order", desc=True).limit(1).execute()
+    current_max_seq = 0
+    if seq_res.data and len(seq_res.data) > 0:
+        val = seq_res.data[0].get("sequence_order")
+        if val is not None:
+            current_max_seq = int(val)
+            
+    # 3. Asignar cada folio con secuencia correlativa
+    for folio_id in request.folio_ids:
+        current_max_seq += 1
+        update_payload: Dict[str, Any] = {
+            "folder_id": folder_id,
+            "sequence_order": current_max_seq
+        }
+        
+        # Si el tomo tiene template_id y el lote del folio lo amerita, se actualiza la referencia
+        client.table("folios").update(update_payload).eq("id", folio_id).execute()
+        
+        if template_id:
+            try:
+                # Si el folio pertenece a un batch, opcionalmente sincronizamos template_id del batch si no tenía
+                folio_row = client.table("folios").select("batch_id").eq("id", folio_id).execute()
+                if folio_row.data and folio_row.data[0].get("batch_id"):
+                    b_id = folio_row.data[0]["batch_id"]
+                    batch_row = client.table("batches").select("template_id").eq("id", b_id).execute()
+                    if batch_row.data and not batch_row.data[0].get("template_id"):
+                        client.table("batches").update({"template_id": template_id}).eq("id", b_id).execute()
+            except Exception:
+                pass
+
+    return {
+        "status": "success",
+        "message": f"{len(request.folio_ids)} folios reasignados exitosamente a la carpeta"
+    }
 
 
 

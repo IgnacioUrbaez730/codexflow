@@ -31,11 +31,11 @@ Las tareas están organizadas en 5 fases secuenciales. Ninguna fase debe iniciar
 
 ## Fase 2: Backend - API de Gestión de Carpetas y Tomos
 
-- [ ] **T02-BE-01**: Crear esquemas Pydantic para `FolderCreate`, `FolderUpdate`, `FolderResponse` y `FolderTreeResponse`.
-- [ ] **T02-BE-02**: Implementar servicio `FolderService` en FastAPI para operaciones CRUD del árbol documental, validando que no se eliminen carpetas que contengan hijos o folios sin reasignación previa.
-- [ ] **T02-BE-03**: Implementar endpoint `GET /api/v1/folders/tree` que arme recursivamente la jerarquía documental Diócesis $\rightarrow$ Parroquia $\rightarrow$ Serie $\rightarrow$ Tomo con contadores de folios y partidas.
-- [ ] **T02-BE-04**: Implementar endpoint `POST /api/v1/folders/{id}/assign-folios` que permita reasignar folios sueltos a un tomo, asignando la plantilla del tomo destino y calculando la secuencia correlativa final.
-- [ ] **T02-BE-05**: Agregar pruebas unitarias y de integración para el servicio de carpetas validando permisos RBAC (`digitizer` bloqueado para crear/mover carpetas).
+- [x] **T02-BE-01**: Crear esquemas Pydantic para `FolderCreate`, `FolderUpdate`, `FolderResponse` y `FolderTreeResponse`.
+- [x] **T02-BE-02**: Implementar servicio `FolderService` en FastAPI para operaciones CRUD del árbol documental, validando que no se eliminen carpetas que contengan hijos o folios sin reasignación previa.
+- [x] **T02-BE-03**: Implementar endpoint `GET /api/v1/folders/tree` que arme recursivamente la jerarquía documental Diócesis $\rightarrow$ Parroquia $\rightarrow$ Serie $\rightarrow$ Tomo con contadores de folios y partidas.
+- [x] **T02-BE-04**: Implementar endpoint `POST /api/v1/folders/{id}/assign-folios` que permita reasignar folios sueltos a un tomo, asignando la plantilla del tomo destino y calculando la secuencia correlativa final.
+- [x] **T02-BE-05**: Agregar pruebas unitarias y de integración para el servicio de carpetas validando permisos RBAC (`digitizer` bloqueado para crear/mover carpetas).
 
 ---
 
