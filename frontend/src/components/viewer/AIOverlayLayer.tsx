@@ -8,6 +8,18 @@ import { AIBoundingBoxItem } from "./AIBoundingBoxItem";
 interface AIOverlayLayerProps {
   predictions: AIPrediction[];
   activeFieldKey?: string | null;
+  activeEntryNumber?: number;
+  activeEntryBoundingBox?: {
+    ymin?: number;
+    xmin?: number;
+    ymax?: number;
+    xmax?: number;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  } | null;
+  hasMultipleEntries?: boolean;
   visible?: boolean;
   rotation?: number | RotationAngle;
   imageWidth: number;
@@ -20,6 +32,9 @@ interface AIOverlayLayerProps {
 export function AIOverlayLayer({
   predictions = [],
   activeFieldKey,
+  activeEntryNumber,
+  activeEntryBoundingBox,
+  hasMultipleEntries = false,
   visible = true,
   rotation = 0,
   imageWidth,
@@ -62,11 +77,29 @@ export function AIOverlayLayer({
             (pred.fieldKey === activeFieldKey || pred.field_key === activeFieldKey)
         );
 
+        let isDimmed = false;
+        if (hasMultipleEntries && activeEntryNumber && !isActive) {
+          const predEntry = pred.entry_number || pred.entryNumber;
+          if (predEntry !== undefined) {
+            isDimmed = predEntry !== activeEntryNumber;
+          } else if (activeEntryBoundingBox) {
+            const minX = activeEntryBoundingBox.xmin ?? activeEntryBoundingBox.x ?? 0;
+            const minY = activeEntryBoundingBox.ymin ?? activeEntryBoundingBox.y ?? 0;
+            const maxX = activeEntryBoundingBox.xmax ?? (minX + (activeEntryBoundingBox.width ?? 1));
+            const maxY = activeEntryBoundingBox.ymax ?? (minY + (activeEntryBoundingBox.height ?? 1));
+            const centerX = pred.bbox.x + pred.bbox.width / 2;
+            const centerY = pred.bbox.y + pred.bbox.height / 2;
+            const isInside = centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY;
+            isDimmed = !isInside;
+          }
+        }
+
         return (
           <AIBoundingBoxItem
             key={pred.id || `${pred.fieldKey}-${pred.bbox.x}-${pred.bbox.y}`}
             prediction={pred}
             isActive={isActive}
+            isDimmed={isDimmed}
             boxX={boxX}
             boxY={boxY}
             boxWidth={boxWidth}

@@ -50,16 +50,16 @@ Las tareas están organizadas en 5 fases secuenciales. Ninguna fase debe iniciar
 
 ## Fase 4: Frontend y Backend - Captura Multi-Partida (FamilySearch Indexing)
 
-- [ ] **T04-BE-01**: Crear esquemas Pydantic y endpoints en FastAPI para `GET /api/v1/folios/{id}/entries` y `PUT /api/v1/folios/{id}/entries/{entry_id}`.
-- [ ] **T04-BE-02**: Implementar lógica de herencia de metadatos en el backend: responder datos inmutables del libro (Diócesis, Parroquia, Tomo, Rango de años) junto a cada partida.
-- [ ] **T04-FE-01**: Rediseñar panel lateral del Visor para soportar pestañas/tarjetas de partidas (*Partida 1*, *Partida 2*, etc.) con botón dinámico `+ Agregar Partida` y atajo global `Alt + N`.
-- [ ] **T04-FE-02**: Implementar renderizado de campos de cabecera heredados del tomo en estado bloqueado (solo lectura / disabled) con tooltip informativo "Campo heredado del tomo".
-- [ ] **T04-FE-03**: Implementar listeners de atajos de teclado estándar FamilySearch en los inputs de transcripción:
+- [x] **T04-BE-01**: Crear esquemas Pydantic y endpoints en FastAPI para `GET /api/v1/folios/{id}/entries` y `PUT /api/v1/folios/{id}/entries/{entry_id}`.
+- [x] **T04-BE-02**: Implementar lógica de herencia de metadatos en el backend: responder datos inmutables del libro (Diócesis, Parroquia, Tomo, Rango de años) junto a cada partida.
+- [x] **T04-FE-01**: Rediseñar panel lateral del Visor para soportar pestañas/tarjetas de partidas (*Partida 1*, *Partida 2*, etc.) con botón dinámico `+ Agregar Partida` y atajo global `Alt + N`.
+- [x] **T04-FE-02**: Implementar renderizado de campos de cabecera heredados del tomo en estado bloqueado (solo lectura / disabled) con tooltip informativo "Campo heredado del tomo".
+- [x] **T04-FE-03**: Implementar listeners de atajos de teclado estándar FamilySearch en los inputs de transcripción:
   - `Ctrl + U`: Asigna valor `<Ilegible>` al input enfocado.
   - `Ctrl + B`: Asigna valor `<En Blanco>` al input enfocado.
   - `Ctrl + D`: Copia el valor del mismo campo desde la partida precedente (`entry_number - 1`).
-- [ ] **T04-FE-04**: Implementar flujo de guardado y avance con `Ctrl + Enter`: guardar partida activa y cambiar el foco a la siguiente partida; si es la última, solicitar y cargar el siguiente folio de la cola.
-- [ ] **T04-FE-05**: Adaptar el visor de imágenes con OpenSeadragon/Canvas para renderizar y resaltar bounding boxes segmentados por partida según la pestaña seleccionada.
+- [x] **T04-FE-04**: Implementar flujo de guardado y avance con `Ctrl + Enter`: guardar partida activa y cambiar el foco a la siguiente partida; si es la última, solicitar y cargar el siguiente folio de la cola.
+- [x] **T04-FE-05**: Adaptar el visor de imágenes con OpenSeadragon/Canvas para renderizar y resaltar bounding boxes segmentados por partida según la pestaña seleccionada.
 
 ---
 

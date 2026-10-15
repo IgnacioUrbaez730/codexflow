@@ -17,6 +17,8 @@ export interface AIPrediction {
   suggestedText: string;
   suggested_text?: string;
   confidence: number; // 0.00 - 1.00
+  entry_number?: number;
+  entryNumber?: number;
   bbox: BoundingBoxNormalized;
   bbox_array?: [number, number, number, number];
   bbox_coords?: [number, number, number, number];

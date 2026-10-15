@@ -2,7 +2,7 @@
 
 import React from "react";
 import { AIPrediction } from "../../types/aiIndexing";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Lock } from "lucide-react";
 
 interface AIAssistedInputProps {
   field: {
@@ -19,6 +19,9 @@ interface AIAssistedInputProps {
   prediction?: AIPrediction;
   isPrefilled?: boolean;
   isModified?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  onDuplicatePrevious?: (fieldId: string) => void;
   className?: string;
 }
 
@@ -31,28 +34,55 @@ export function AIAssistedInput({
   prediction,
   isPrefilled = false,
   isModified = false,
+  disabled = false,
+  disabledReason = "Campo heredado del tomo",
+  onDuplicatePrevious,
   className = "",
 }: AIAssistedInputProps) {
   const confidence = prediction ? Math.round(prediction.confidence * 100) : null;
 
-  // Badge state:
-  // - Prefilled by IA and untouched: Green badge "IA: X%"
-  // - Prefilled by IA but edited: Gray/slate badge "Editado" or subtle tag
-  // - Low confidence (<80%): discrete clickable suggestion pill if user wants to use it
-  const showGreenBadge = isPrefilled && !isModified && confidence !== null;
-  const showEditedBadge = isPrefilled && isModified && confidence !== null;
+  const showGreenBadge = !disabled && isPrefilled && !isModified && confidence !== null;
+  const showEditedBadge = !disabled && isPrefilled && isModified && confidence !== null;
 
-  const borderClass = showGreenBadge
+  const borderClass = disabled
+    ? "border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed select-none"
+    : showGreenBadge
     ? "border-emerald-400 focus:border-emerald-500 focus:ring-emerald-200"
     : showEditedBadge
     ? "border-slate-300 focus:border-blue-500 focus:ring-blue-100"
     : "border-gray-300 focus:border-blue-500 focus:ring-blue-100";
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (disabled) return;
+    if (e.ctrlKey && (e.key === "u" || e.key === "U")) {
+      e.preventDefault();
+      onChange("<Ilegible>");
+    } else if (e.ctrlKey && (e.key === "b" || e.key === "B")) {
+      e.preventDefault();
+      onChange("<En Blanco>");
+    } else if (e.ctrlKey && (e.key === "d" || e.key === "D")) {
+      e.preventDefault();
+      if (onDuplicatePrevious) {
+        onDuplicatePrevious(field.id);
+      }
+    }
+  };
+
   return (
     <div className={`space-y-1 ${className}`}>
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-gray-700">
-          {field.label} {field.required && <span className="text-red-500">*</span>}
+        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700" title={disabled ? disabledReason : undefined}>
+          <span>{field.label}</span>
+          {field.required && !disabled && <span className="text-red-500">*</span>}
+          {disabled && (
+            <span
+              className="inline-flex items-center gap-0.5 text-xs text-gray-400 cursor-help"
+              title={disabledReason}
+            >
+              <Lock className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-[11px] font-normal">Heredado</span>
+            </span>
+          )}
         </label>
 
         {/* AI Origin Badge */}
@@ -79,15 +109,20 @@ export function AIAssistedInput({
       {field.type === "long_text" ? (
         <textarea
           rows={3}
-          className={`w-full border rounded-md p-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
+          className={`w-full border rounded-md p-2 text-sm transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          onKeyDown={handleKeyDown}
         />
       ) : field.type === "dropdown" ? (
         <select
-          className={`w-full border rounded-md p-2 text-sm text-gray-900 bg-white transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
+          className={`w-full border rounded-md p-2 text-sm bg-white transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
@@ -103,20 +138,26 @@ export function AIAssistedInput({
       ) : field.type === "date" ? (
         <input
           type="date"
-          className={`w-full border rounded-md p-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
+          className={`w-full border rounded-md p-2 text-sm transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          onKeyDown={handleKeyDown}
         />
       ) : (
         <input
           type="text"
-          className={`w-full border rounded-md p-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
+          className={`w-full border rounded-md p-2 text-sm transition-colors focus:outline-none focus:ring-2 ${borderClass}`}
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          onKeyDown={handleKeyDown}
         />
       )}
     </div>

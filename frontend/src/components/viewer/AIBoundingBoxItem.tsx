@@ -6,6 +6,7 @@ import { AIPrediction } from "../../types/aiIndexing";
 interface AIBoundingBoxItemProps {
   prediction: AIPrediction;
   isActive: boolean;
+  isDimmed?: boolean;
   boxX: number;
   boxY: number;
   boxWidth: number;
@@ -16,6 +17,7 @@ interface AIBoundingBoxItemProps {
 export function AIBoundingBoxItem({
   prediction,
   isActive,
+  isDimmed = false,
   boxX,
   boxY,
   boxWidth,
@@ -27,35 +29,41 @@ export function AIBoundingBoxItem({
 
   // Styling based on state:
   // Active: yellow glowing #F59E0B
+  // Dimmed (other entries): neutral light gray #94A3B8, opacity 0.25
   // Normal high confidence (>= 80%): green #10B981
   // Normal medium confidence (< 80%): blue #3B82F6
   const isHighConfidence = prediction.confidence >= 0.8;
-  const strokeColor = isActive
+  const strokeColor = isDimmed
+    ? "#94A3B8"
+    : isActive
     ? "#F59E0B"
     : isHighConfidence
     ? "#10B981"
     : "#3B82F6";
-  const fillColor = isActive
+  const fillColor = isDimmed
+    ? "rgba(148, 163, 184, 0.06)"
+    : isActive
     ? "rgba(245, 158, 11, 0.28)"
     : isHighConfidence
     ? "rgba(16, 185, 129, 0.18)"
     : "rgba(59, 130, 246, 0.18)";
 
-  const strokeWidth = isActive ? 3 : isHovered ? 2.5 : 1.5;
+  const strokeWidth = isDimmed ? 1 : isActive ? 3 : isHovered ? 2.5 : 1.5;
 
   return (
     <g
-      className="cursor-pointer transition-all duration-150 select-none group"
-      style={{ pointerEvents: "auto" }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className={`transition-all duration-150 select-none group ${isDimmed ? "opacity-30" : "cursor-pointer"}`}
+      style={{ pointerEvents: isDimmed ? "none" : "auto" }}
+      onMouseEnter={() => !isDimmed && setIsHovered(true)}
+      onMouseLeave={() => !isDimmed && setIsHovered(false)}
       onClick={(e) => {
+        if (isDimmed) return;
         e.stopPropagation();
         onClick(prediction);
       }}
     >
       {/* Glow effect for active box */}
-      {isActive && (
+      {!isDimmed && isActive && (
         <rect
           x={boxX - 2}
           y={boxY - 2}
@@ -79,12 +87,12 @@ export function AIBoundingBoxItem({
         fill={fillColor}
         stroke={strokeColor}
         strokeWidth={strokeWidth}
-        strokeDasharray={!isHighConfidence && !isActive ? "4,2" : undefined}
+        strokeDasharray={isDimmed ? "3,3" : (!isHighConfidence && !isActive ? "4,2" : undefined)}
         rx={2}
       />
 
       {/* Badge on hover or active */}
-      {(isActive || isHovered) && (
+      {!isDimmed && (isActive || isHovered) && (
         <g transform={`translate(${boxX}, ${Math.max(16, boxY - 6)})`}>
           <rect
             x={0}

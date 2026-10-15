@@ -103,6 +103,21 @@ class FolderResponse(BaseModel):
 class AssignFoliosRequest(BaseModel):
     folio_ids: List[str]
 
+class FolioEntryCreate(BaseModel):
+    entry_number: int
+    metadata: Dict[str, Any]
+    status: Optional[str] = "pending"
+    bounding_box: Optional[Dict[str, Any]] = None
+
+class FolioEntryUpdate(BaseModel):
+    metadata: Dict[str, Any]
+    status: Optional[str] = None
+    bounding_box: Optional[Dict[str, Any]] = None
+
+class BatchSaveEntriesRequest(BaseModel):
+    entries: List[FolioEntryCreate]
+    final_status: Optional[str] = None
+
 async def get_auth_context(authorization: str = Header(...), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -2915,6 +2930,220 @@ async def assign_folios_to_folder(
         "status": "success",
         "message": f"{len(request.folio_ids)} folios reasignados exitosamente a la carpeta"
     }
+
+
+def _resolve_folder_inherited_context(client: Client, folder_id: Optional[str], tenant_id: str) -> Dict[str, Any]:
+    context = {
+        "parish_name": None,
+        "diocese_name": None,
+        "tome_number": None,
+        "year_start": None,
+        "year_end": None,
+    }
+    if not folder_id:
+        return context
+
+    current_id = folder_id
+    for _ in range(5):
+        if not current_id:
+            break
+        res = client.table("document_folders").select("*").eq("id", current_id).eq("tenant_id", tenant_id).execute()
+        if not res.data:
+            break
+        folder = res.data[0]
+        meta = folder.get("metadata") or {}
+        ftype = folder.get("folder_type")
+        fname = folder.get("name")
+
+        if ftype == "tome":
+            if not context["tome_number"]:
+                context["tome_number"] = meta.get("tome_number") or meta.get("number") or fname
+            if not context["year_start"]:
+                context["year_start"] = meta.get("year_start") or meta.get("start_year")
+            if not context["year_end"]:
+                context["year_end"] = meta.get("year_end") or meta.get("end_year")
+        elif ftype == "parish":
+            if not context["parish_name"]:
+                context["parish_name"] = fname
+        elif ftype == "root":
+            if not context["diocese_name"]:
+                context["diocese_name"] = fname
+
+        if not context["parish_name"] and meta.get("parish_name"):
+            context["parish_name"] = meta.get("parish_name")
+        if not context["diocese_name"] and meta.get("diocese_name"):
+            context["diocese_name"] = meta.get("diocese_name")
+        if not context["tome_number"] and meta.get("tome_number"):
+            context["tome_number"] = meta.get("tome_number")
+        if not context["year_start"] and (meta.get("year_start") or meta.get("start_year")):
+            context["year_start"] = meta.get("year_start") or meta.get("start_year")
+        if not context["year_end"] and (meta.get("year_end") or meta.get("end_year")):
+            context["year_end"] = meta.get("year_end") or meta.get("end_year")
+
+        current_id = folder.get("parent_id")
+
+    return context
+
+
+@app.get("/api/v1/folios/{folio_id}/entries")
+async def get_folio_entries(
+    folio_id: str,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+
+    folio_res = client.table("folios").select("*").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+    if not folio_res.data:
+        raise HTTPException(status_code=404, detail="Folio no encontrado")
+
+    folio = folio_res.data[0]
+    folder_id = folio.get("folder_id")
+    inherited_context = _resolve_folder_inherited_context(client, folder_id, tenant_id)
+
+    entries_res = client.table("folio_entries").select("*").eq("folio_id", folio_id).eq("tenant_id", tenant_id).order("entry_number").execute()
+    entries = entries_res.data or []
+
+    if not entries:
+        existing_meta = folio.get("metadata")
+        if existing_meta and isinstance(existing_meta, dict) and len(existing_meta) > 0:
+            entries = [{
+                "id": f"synthetic-{folio_id}-1",
+                "folio_id": folio_id,
+                "entry_number": 1,
+                "status": folio.get("status") or "pending",
+                "metadata": existing_meta,
+                "bounding_box": None
+            }]
+        else:
+            entries = [{
+                "id": f"synthetic-{folio_id}-1",
+                "folio_id": folio_id,
+                "entry_number": 1,
+                "status": "pending",
+                "metadata": {},
+                "bounding_box": None
+            }]
+
+    inherited_tome_metadata = {
+        "diocese": inherited_context.get("diocese_name") or "",
+        "parish": inherited_context.get("parish_name") or "",
+        "series": "",
+        "tome": str(inherited_context.get("tome_number") or ""),
+        "years_range": f"{inherited_context.get('year_start') or ''}-{inherited_context.get('year_end') or ''}".strip("-")
+    }
+
+    return {
+        "status": "success",
+        "folio_id": folio_id,
+        "folio_number": folio.get("sequence_order") or 1,
+        "canonical_filename": folio.get("canonical_filename"),
+        "original_filename": folio.get("original_filename"),
+        "inherited_context": inherited_context,
+        "inherited_tome_metadata": inherited_tome_metadata,
+        "entries": entries,
+        "data": {
+            "folio_id": folio_id,
+            "entries": entries,
+            "inherited_context": inherited_context,
+            "inherited_tome_metadata": inherited_tome_metadata
+        }
+    }
+
+
+@app.post("/api/v1/folios/{folio_id}/entries")
+async def save_folio_entries(
+    folio_id: str,
+    request: BatchSaveEntriesRequest,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+    user_id = auth.get("user_id")
+
+    folio_res = client.table("folios").select("*").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+    if not folio_res.data:
+        raise HTTPException(status_code=404, detail="Folio no encontrado")
+
+    saved_entries = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for entry in request.entries:
+        entry_payload = {
+            "tenant_id": tenant_id,
+            "folio_id": folio_id,
+            "entry_number": entry.entry_number,
+            "status": entry.status or "pending",
+            "metadata": entry.metadata,
+            "bounding_box": entry.bounding_box,
+            "updated_at": now_iso
+        }
+
+        exist_res = client.table("folio_entries").select("id").eq("folio_id", folio_id).eq("entry_number", entry.entry_number).execute()
+        if exist_res.data and len(exist_res.data) > 0:
+            e_id = exist_res.data[0]["id"]
+            upd = client.table("folio_entries").update(entry_payload).eq("id", e_id).execute()
+            if upd.data:
+                saved_entries.append(upd.data[0])
+            else:
+                saved_entries.append({"id": e_id, **entry_payload})
+        else:
+            entry_payload["created_at"] = now_iso
+            entry_payload["created_by"] = user_id
+            ins = client.table("folio_entries").insert(entry_payload).execute()
+            if ins.data:
+                saved_entries.append(ins.data[0])
+            else:
+                saved_entries.append(entry_payload)
+
+    if request.final_status == "completed":
+        folio_update: Dict[str, Any] = {
+            "status": "completed",
+            "locked_at": None,
+            "verified_at": now_iso
+        }
+        if request.entries:
+            folio_update["metadata"] = request.entries[0].metadata
+        client.table("folios").update(folio_update).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+    elif request.final_status:
+        client.table("folios").update({
+            "status": request.final_status,
+            "locked_at": None
+        }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+    return {
+        "status": "success",
+        "message": f"{len(saved_entries)} partidas guardadas exitosamente",
+        "data": saved_entries
+    }
+
+
+@app.put("/api/v1/folios/{folio_id}/entries/{entry_id}")
+async def update_single_folio_entry(
+    folio_id: str,
+    entry_id: str,
+    entry_in: FolioEntryUpdate,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth["tenant_id"]
+    client = auth.get("user_client") or supabase
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_data: Dict[str, Any] = {
+        "metadata": entry_in.metadata,
+        "updated_at": now_iso
+    }
+    if entry_in.status:
+        update_data["status"] = entry_in.status
+    if entry_in.bounding_box is not None:
+        update_data["bounding_box"] = entry_in.bounding_box
+
+    res = client.table("folio_entries").update(update_data).eq("id", entry_id).eq("folio_id", folio_id).eq("tenant_id", tenant_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Partida no encontrada")
+
+    return {"status": "success", "data": res.data[0]}
+
 
 
 
