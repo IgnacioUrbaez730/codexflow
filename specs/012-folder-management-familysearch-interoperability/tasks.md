@@ -41,10 +41,10 @@ Las tareas están organizadas en 5 fases secuenciales. Ninguna fase debe iniciar
 
 ## Fase 3: Frontend - Explorador de Carpetas (DCam Tree) y Reasignación
 
-- [ ] **T03-FE-01**: Crear componente de interfaz de árbol jerárquico `DocumentFolderTree` en Next.js con soporte de expansión/colapso, insignias de tipo de carpeta e indicadores de progreso.
-- [ ] **T03-FE-02**: Diseñar modal/formulario para crear y editar tomos con campos requeridos: Años Extremos (inicio/fin), Número de Tomo, Ubicación física (Caja/Estante) y selector de Plantilla de Indexación.
-- [ ] **T03-FE-03**: Implementar vista y filtros de *"Folios Sin Clasificar"* con acción en lote para *"Mover a Tomo existente"*.
-- [ ] **T03-FE-04**: Integrar protección de interfaz RBAC ocultando botones de creación y arrastre a usuarios con rol `digitizer`.
+- [x] **T03-FE-01**: Crear componente de interfaz de árbol jerárquico `DocumentFolderTree` en Next.js con soporte de expansión/colapso, insignias de tipo de carpeta e indicadores de progreso.
+- [x] **T03-FE-02**: Diseñar modal/formulario para crear y editar tomos con campos requeridos: Años Extremos (inicio/fin), Número de Tomo, Ubicación física (Caja/Estante) y selector de Plantilla de Indexación.
+- [x] **T03-FE-03**: Implementar vista y filtros de *"Folios Sin Clasificar"* con acción en lote para *"Mover a Tomo existente"*.
+- [x] **T03-FE-04**: Integrar protección de interfaz RBAC ocultando botones de creación y arrastre a usuarios con rol `digitizer`.
 
 ---
 
