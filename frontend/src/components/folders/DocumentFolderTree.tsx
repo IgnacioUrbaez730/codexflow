@@ -140,7 +140,7 @@ export default function DocumentFolderTree({
               {node.name}
             </span>
 
-            {node.metadata?.is_virtual_unclassified && (
+            {(node.metadata?.is_virtual_unclassified || node.metadata?.system_managed || node.name?.toLowerCase().includes("sin clasificar")) && (
               <span className="px-1 py-0.2 text-[9px] bg-yellow-200 text-yellow-900 rounded font-normal">
                 Virtual
               </span>
@@ -165,7 +165,7 @@ export default function DocumentFolderTree({
 
             {canManage && (
               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-0.5">
-                {onEditFolder && !node.metadata?.is_virtual_unclassified && (
+                {onEditFolder && !(node.metadata?.is_virtual_unclassified || node.metadata?.system_managed || node.name?.toLowerCase().includes("sin clasificar")) && (
                   <button
                     type="button"
                     onClick={(e) => {

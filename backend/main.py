@@ -2835,36 +2835,110 @@ async def delete_folder(
     return {"status": "success", "message": "Carpeta eliminada exitosamente"}
 
 
-@app.get("/api/v1/folders/tree")
-async def get_folders_tree(
+@app.get("/api/v1/folders/unclassified-folios")
+async def get_unclassified_folios(
+    x_tenant_id: Optional[str] = Header(None),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
-    tenant_id = auth.get("tenant_id")
+    tenant_id = auth.get("tenant_id") or x_tenant_id
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id es requerido")
+
+    # 1. Buscar la carpeta virtual de 'Sin Clasificar' del tenant
+    virtual_folder_id = None
+    try:
+        folders_res = supabase.table("document_folders").select("id, name, metadata").eq("tenant_id", tenant_id).execute()
+        for f in (folders_res.data or []):
+            meta = f.get("metadata") or {}
+            fname = (f.get("name") or "").lower()
+            if (
+                meta.get("is_virtual_unclassified") in (True, "true")
+                or meta.get("system_managed") in (True, "true")
+                or "sin clasificar" in fname
+            ):
+                virtual_folder_id = f["id"]
+                break
+    except Exception as f_err:
+        print(f"Error finding virtual unclassified folder: {f_err}")
+
+    # 2. Consultar todos los folios del tenant_id donde folder_id IS NULL O folder_id == virtual_folder_id
+    folios = []
+    try:
+        query = supabase.table("folios").select("*, batches(id, template_id, templates(name))").eq("tenant_id", tenant_id)
+        if virtual_folder_id:
+            query = query.or_(f"folder_id.is.null,folder_id.eq.{virtual_folder_id}")
+        else:
+            query = query.is_("folder_id", "null")
+            
+        folios_res = query.order("created_at", desc=True).limit(200).execute()
+        folios = folios_res.data or []
+    except Exception as q_err:
+        print(f"Notice: query join failed, trying fallback folios query: {q_err}")
+        try:
+            fb_query = supabase.table("folios").select("*").eq("tenant_id", tenant_id)
+            if virtual_folder_id:
+                fb_query = fb_query.or_(f"folder_id.is.null,folder_id.eq.{virtual_folder_id}")
+            else:
+                fb_query = fb_query.is_("folder_id", "null")
+            fb_res = fb_query.order("created_at", desc=True).limit(200).execute()
+            folios = fb_res.data or []
+        except Exception as fb_err:
+            print(f"Error in fallback folios query: {fb_err}")
+            folios = []
+
+    return {
+        "status": "success",
+        "data": folios,
+        "unclassified_folder_id": virtual_folder_id
+    }
+
+
+@app.get("/api/v1/folders/tree")
+async def get_folders_tree(
+    x_tenant_id: Optional[str] = Header(None),
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    tenant_id = auth.get("tenant_id") or x_tenant_id
     client = auth.get("user_client") or supabase
     
     if not tenant_id:
         return {"status": "success", "data": []}
     
     # 1. Obtener todas las carpetas del tenant
-    folders_res = client.table("document_folders").select("*").eq("tenant_id", tenant_id).order("name").execute()
+    folders_res = supabase.table("document_folders").select("*").eq("tenant_id", tenant_id).order("name").execute()
     folders = folders_res.data or []
     
+    # Identificar la carpeta virtual de 'Sin Clasificar'
+    virtual_folder_id = None
+    for f in folders:
+        meta = f.get("metadata") or {}
+        fname = (f.get("name") or "").lower()
+        if (
+            meta.get("is_virtual_unclassified") in (True, "true")
+            or meta.get("system_managed") in (True, "true")
+            or "sin clasificar" in fname
+        ):
+            virtual_folder_id = f["id"]
+            break
+
     # 2. Conteo de folios agrupados por folder_id
-    # Obtenemos los folios con folder_id no nulo para este tenant (vía batches si folios no tiene tenant_id directo, o folios directamente)
     folios_counts: Dict[str, int] = {}
     entries_counts: Dict[str, int] = {}
     try:
-        folios_res = client.table("folios").select("id, folder_id").execute()
+        folios_res = supabase.table("folios").select("id, folder_id").eq("tenant_id", tenant_id).execute()
         folder_folio_map = {}
         for f in folios_res.data or []:
             fid = f.get("folder_id")
             if fid:
                 folios_counts[fid] = folios_counts.get(fid, 0) + 1
                 folder_folio_map[f["id"]] = fid
+            elif virtual_folder_id:
+                folios_counts[virtual_folder_id] = folios_counts.get(virtual_folder_id, 0) + 1
+                folder_folio_map[f["id"]] = virtual_folder_id
 
         # Conteo de partidas por carpeta si folio_entries existe
         try:
-            entries_res = client.table("folio_entries").select("id, folio_id").eq("tenant_id", tenant_id).execute()
+            entries_res = supabase.table("folio_entries").select("id, folio_id").eq("tenant_id", tenant_id).execute()
             for e in entries_res.data or []:
                 folio_id = e.get("folio_id")
                 fid = folder_folio_map.get(folio_id)
@@ -2872,8 +2946,8 @@ async def get_folders_tree(
                     entries_counts[fid] = entries_counts.get(fid, 0) + 1
         except Exception:
             pass
-    except Exception:
-        pass
+    except Exception as count_err:
+        print(f"Error counting folios in tree: {count_err}")
         
     # 3. Construir árbol jerárquico
     nodes_by_id = {}

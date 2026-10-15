@@ -76,7 +76,11 @@ export default function IngestHub() {
     const tomes: DocumentFolder[] = [];
     const traverse = (nodes: DocumentFolder[]) => {
       for (const node of nodes) {
-        if (node.folder_type === "tome" && !node.metadata?.is_virtual_unclassified) {
+        const isUnclass =
+          Boolean(node.metadata?.is_virtual_unclassified) ||
+          Boolean(node.metadata?.system_managed) ||
+          Boolean(node.name?.toLowerCase().includes("sin clasificar"));
+        if (node.folder_type === "tome" && !isUnclass) {
           tomes.push(node);
         }
         if (node.children && node.children.length > 0) {
@@ -93,7 +97,11 @@ export default function IngestHub() {
     let foundId: string | null = null;
     const traverse = (nodes: DocumentFolder[]) => {
       for (const node of nodes) {
-        if (node.metadata?.is_virtual_unclassified) {
+        const isUnclass =
+          Boolean(node.metadata?.is_virtual_unclassified) ||
+          Boolean(node.metadata?.system_managed) ||
+          Boolean(node.name?.toLowerCase().includes("sin clasificar"));
+        if (isUnclass) {
           foundId = node.id;
           return;
         }
@@ -126,7 +134,26 @@ export default function IngestHub() {
 
       if (res.ok) {
         const json = await res.json();
-        const treeData: DocumentFolder[] = json.data || [];
+        let treeData: DocumentFolder[] = json.data || [];
+        
+        // Al detectar la carpeta 'Sin Clasificar', asegurar que su contador de folios refleje los folios que contiene
+        const syncUnclassified = (nodes: DocumentFolder[]): DocumentFolder[] => {
+          return nodes.map((node) => {
+            const isUnclass =
+              Boolean(node.metadata?.is_virtual_unclassified) ||
+              Boolean(node.metadata?.system_managed) ||
+              Boolean(node.name?.toLowerCase().includes("sin clasificar"));
+            const updated = { ...node };
+            if (isUnclass && typeof updated.total_folios !== "number") {
+              updated.total_folios = 0;
+            }
+            if (updated.children && updated.children.length > 0) {
+              updated.children = syncUnclassified(updated.children);
+            }
+            return updated;
+          });
+        };
+        treeData = syncUnclassified(treeData);
         setFolderTree(treeData);
 
         // Keep or select initial folder
@@ -161,11 +188,21 @@ export default function IngestHub() {
   const fetchFolderFolios = useCallback(async (folderId: string) => {
     setLoadingFolderFolios(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("folios")
-        .select("*, batches(id, template_id, templates(name))")
-        .eq("folder_id", folderId)
-        .order("sequence_order", { ascending: true });
+        .select("*, batches(id, template_id, templates(name))");
+
+      if (unclassifiedFolderId && folderId === unclassifiedFolderId) {
+        query = query.or(`folder_id.is.null,folder_id.eq.${folderId}`);
+      } else {
+        query = query.eq("folder_id", folderId);
+      }
+
+      if (tenantId) {
+        query = query.eq("tenant_id", tenantId);
+      }
+
+      const { data, error } = await query.order("sequence_order", { ascending: true });
 
       if (!error && data) {
         setFolderFolios(data as FolioItem[]);
@@ -178,35 +215,90 @@ export default function IngestHub() {
     } finally {
       setLoadingFolderFolios(false);
     }
-  }, [supabase]);
+  }, [supabase, tenantId, unclassifiedFolderId]);
 
   const fetchUnclassifiedFolios = useCallback(async () => {
     setLoadingUnclassified(true);
     try {
-      let query = supabase
-        .from("folios")
-        .select("*, batches(id, template_id, templates(name))");
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      let foliosData: FolioItem[] | null = null;
 
-      if (unclassifiedFolderId) {
-        query = query.or(`folder_id.is.null,folder_id.eq.${unclassifiedFolderId}`);
-      } else {
-        query = query.is("folder_id", null);
+      // 1. Intentar llamar al endpoint dedicado en backend
+      if (token) {
+        try {
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${token}`,
+          };
+          if (tenantId) {
+            headers["X-Tenant-ID"] = tenantId;
+          }
+          const res = await fetch("/api/v1/folders/unclassified-folios", { headers });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.status === "success" && Array.isArray(json.data)) {
+              foliosData = json.data as FolioItem[];
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("Fallback a Supabase directo para folios sin clasificar:", fetchErr);
+        }
       }
 
-      const { data, error } = await query.order("created_at", { ascending: false }).limit(50);
+      // 2. Si falló el endpoint o no hay token, fallback a consulta directa en Supabase
+      if (!foliosData) {
+        let query = supabase
+          .from("folios")
+          .select("*, batches(id, template_id, templates(name))");
 
-      if (!error && data) {
-        setUnclassifiedFolios(data as FolioItem[]);
-      } else {
-        setUnclassifiedFolios([]);
+        if (tenantId) {
+          query = query.eq("tenant_id", tenantId);
+        }
+
+        if (unclassifiedFolderId) {
+          query = query.or(`folder_id.is.null,folder_id.eq.${unclassifiedFolderId}`);
+        } else {
+          query = query.is("folder_id", null);
+        }
+
+        const { data, error } = await query.order("created_at", { ascending: false }).limit(50);
+
+        if (!error && data) {
+          foliosData = data as FolioItem[];
+        } else {
+          foliosData = [];
+        }
       }
+
+      setUnclassifiedFolios(foliosData);
+
+      // Sincronizar el contador en folderTree para reflejar los folios que contiene la carpeta 'Sin Clasificar'
+      setFolderTree((prevTree) => {
+        const updateTreeCounts = (nodes: DocumentFolder[]): DocumentFolder[] => {
+          return nodes.map((node) => {
+            const isUnclass =
+              Boolean(node.metadata?.is_virtual_unclassified) ||
+              Boolean(node.metadata?.system_managed) ||
+              Boolean(node.name?.toLowerCase().includes("sin clasificar"));
+            const updated = { ...node };
+            if (isUnclass) {
+              updated.total_folios = foliosData!.length;
+            }
+            if (updated.children && updated.children.length > 0) {
+              updated.children = updateTreeCounts(updated.children);
+            }
+            return updated;
+          });
+        };
+        return updateTreeCounts(prevTree);
+      });
     } catch (err) {
       console.error("Error cargando folios sin clasificar:", err);
       setUnclassifiedFolios([]);
     } finally {
       setLoadingUnclassified(false);
     }
-  }, [supabase, unclassifiedFolderId]);
+  }, [supabase, tenantId, unclassifiedFolderId]);
 
   const fetchRecentBatches = async () => {
     setLoadingBatches(true);
@@ -387,12 +479,17 @@ export default function IngestHub() {
       const token = session?.access_token;
       if (!token) throw new Error("No hay sesión activa.");
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+      if (tenantId) {
+        headers["X-Tenant-ID"] = tenantId;
+      }
+
       const res = await fetch(`/api/v1/folders/${selectedFolder.id}/assign-folios`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({ folio_ids: selectedUnclassifiedIds }),
       });
 
@@ -618,75 +715,97 @@ export default function IngestHub() {
                 <div>
                   <div className="flex items-start justify-between pb-4 border-b">
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 rounded uppercase">
-                          {selectedFolder.folder_type}
-                        </span>
-                        {selectedFolder.metadata?.is_virtual_unclassified && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
-                            Bandeja Virtual
-                          </span>
-                        )}
-                        <h2 className="text-xl font-bold text-gray-900">
-                          {selectedFolder.name}
-                        </h2>
-                      </div>
-                      {selectedFolder.folder_type === "tome" && (
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
-                          {selectedFolder.metadata?.tome_number && (
-                            <span>
-                              <strong>Tomo:</strong> {selectedFolder.metadata.tome_number}
-                            </span>
-                          )}
-                          {(selectedFolder.metadata?.year_start || selectedFolder.metadata?.year_end) && (
-                            <span>
-                              <strong>Años Extremos:</strong>{" "}
-                              {selectedFolder.metadata.year_start || "?"} -{" "}
-                              {selectedFolder.metadata.year_end || "?"}
-                            </span>
-                          )}
-                          {selectedFolder.metadata?.location && (
-                            <span>
-                              <strong>Ubicación:</strong> {selectedFolder.metadata.location}
-                            </span>
-                          )}
-                          {selectedFolder.metadata?.template_id && (
-                            <span>
-                              <strong>Plantilla:</strong>{" "}
-                              {templates.find((t) => t.id === selectedFolder.metadata?.template_id)?.name ||
-                                "Asignada"}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      {(() => {
+                        const isSelectedVirtualUnclassified = Boolean(
+                          selectedFolder.metadata?.is_virtual_unclassified ||
+                          selectedFolder.metadata?.system_managed ||
+                          selectedFolder.name?.toLowerCase().includes("sin clasificar")
+                        );
+                        return (
+                          <>
+                            <div className="flex items-center space-x-2">
+                              <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 rounded uppercase">
+                                {selectedFolder.folder_type}
+                              </span>
+                              {isSelectedVirtualUnclassified && (
+                                <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
+                                  Bandeja Virtual
+                                </span>
+                              )}
+                              <h2 className="text-xl font-bold text-gray-900">
+                                {selectedFolder.name}
+                              </h2>
+                            </div>
+                            {selectedFolder.folder_type === "tome" && (
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
+                                {selectedFolder.metadata?.tome_number && (
+                                  <span>
+                                    <strong>Tomo:</strong> {selectedFolder.metadata.tome_number}
+                                  </span>
+                                )}
+                                {(selectedFolder.metadata?.year_start || selectedFolder.metadata?.year_end) && (
+                                  <span>
+                                    <strong>Años Extremos:</strong>{" "}
+                                    {selectedFolder.metadata.year_start || "?"} -{" "}
+                                    {selectedFolder.metadata.year_end || "?"}
+                                  </span>
+                                )}
+                                {selectedFolder.metadata?.location && (
+                                  <span>
+                                    <strong>Ubicación:</strong> {selectedFolder.metadata.location}
+                                  </span>
+                                )}
+                                {selectedFolder.metadata?.template_id && (
+                                  <span>
+                                    <strong>Plantilla:</strong>{" "}
+                                    {templates.find((t) => t.id === selectedFolder.metadata?.template_id)?.name ||
+                                      "Asignada"}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex items-center space-x-2">
-                      {selectedFolder.folder_type === "tome" && !selectedFolder.metadata?.is_virtual_unclassified && (
-                        <button
-                          type="button"
-                          onClick={() => setIsExportModalOpen(true)}
-                          className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
-                        >
-                          <Download className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Exportar DIP FamilySearch</span>
-                        </button>
-                      )}
+                      {(() => {
+                        const isSelectedVirtualUnclassified = Boolean(
+                          selectedFolder.metadata?.is_virtual_unclassified ||
+                          selectedFolder.metadata?.system_managed ||
+                          selectedFolder.name?.toLowerCase().includes("sin clasificar")
+                        );
+                        return (
+                          <>
+                            {selectedFolder.folder_type === "tome" && !isSelectedVirtualUnclassified && (
+                              <button
+                                type="button"
+                                onClick={() => setIsExportModalOpen(true)}
+                                className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                              >
+                                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Exportar DIP FamilySearch</span>
+                              </button>
+                            )}
 
-                      {canManageFolders && !selectedFolder.metadata?.is_virtual_unclassified && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFolderToEdit(selectedFolder);
-                            setParentForCreate(null);
-                            setIsCreateModalOpen(true);
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1 cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Editar Tomo</span>
-                        </button>
-                      )}
+                            {canManageFolders && !isSelectedVirtualUnclassified && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFolderToEdit(selectedFolder);
+                                  setParentForCreate(null);
+                                  setIsCreateModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1 cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>Editar Tomo</span>
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
