@@ -21,11 +21,11 @@ Las tareas están organizadas en 5 fases secuenciales. Ninguna fase debe iniciar
 
 ## Fase 1: Base de Datos y Políticas de Seguridad RLS
 
-- [ ] **T01-DB-01**: Crear migración SQL en Supabase para el tipo enumerado `folder_type_enum` ('root', 'parish', 'series', 'tome') y la tabla `document_folders` con soporte de `parent_id`, `metadata` JSONB y auditoría (`created_by`, `created_at`).
-- [ ] **T01-DB-02**: Crear migración SQL para agregar columnas `folder_id`, `sequence_order`, `original_filename` y `canonical_filename` en la tabla `folios`, con índices referenciales.
-- [ ] **T01-DB-03**: Crear migración SQL para la tabla `folio_entries` (`id`, `tenant_id`, `folio_id`, `entry_number`, `status`, `metadata`, `bounding_box`), con restricción de unicidad `UNIQUE (folio_id, entry_number)`.
-- [ ] **T01-DB-04**: Implementar políticas de seguridad RLS en `document_folders` y `folio_entries` restringiendo lectura a miembros del mismo `tenant_id` y escritura a roles permitidos (`admin`, `archivist`, `digitizer`).
-- [ ] **T01-DB-05**: Crear script/función SQL de migración hacia atrás que cree la carpeta virtual *"Sin Clasificar (Migración inicial)"* en cada organización y asigne a ella todos los folios existentes con `folder_id IS NULL`.
+- [x] **T01-DB-01**: Crear migración SQL en Supabase para el tipo enumerado `folder_type_enum` ('root', 'parish', 'series', 'tome') y la tabla `document_folders` con soporte de `parent_id`, `metadata` JSONB y auditoría (`created_by`, `created_at`).
+- [x] **T01-DB-02**: Crear migración SQL para agregar columnas `folder_id`, `sequence_order`, `original_filename` y `canonical_filename` en la tabla `folios`, con índices referenciales.
+- [x] **T01-DB-03**: Crear migración SQL para la tabla `folio_entries` (`id`, `tenant_id`, `folio_id`, `entry_number`, `status`, `metadata`, `bounding_box`), con restricción de unicidad `UNIQUE (folio_id, entry_number)`.
+- [x] **T01-DB-04**: Implementar políticas de seguridad RLS en `document_folders` y `folio_entries` restringiendo lectura a miembros del mismo `tenant_id` y escritura a roles permitidos (`admin`, `archivist`, `digitizer`).
+- [x] **T01-DB-05**: Crear script/función SQL de migración hacia atrás que cree la carpeta virtual *"Sin Clasificar (Migración inicial)"* en cada organización y asigne a ella todos los folios existentes con `folder_id IS NULL`.
 
 ---
 
