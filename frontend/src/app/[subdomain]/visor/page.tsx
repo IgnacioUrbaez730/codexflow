@@ -11,6 +11,7 @@ import {
   Trash2,
   Plus,
   Lock,
+  MapPin,
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
@@ -345,6 +346,66 @@ export default function VisorDual() {
           return {
             value: String(inheritedContext.year_end),
             reason: "Campo heredado del tomo (Año de fin)",
+          };
+        }
+      }
+
+      // Redundant geographic fields blocking (SPEC-013 T04-FE-03)
+      if (
+        key === "lugar" ||
+        key === "place" ||
+        key.includes("lugar_") ||
+        key.includes("lugar_suceso") ||
+        key.includes("lugar_bautismo") ||
+        key.includes("lugar_evento")
+      ) {
+        if (inheritedContext.canonical_place) {
+          return {
+            value: inheritedContext.canonical_place,
+            reason: "Campo heredado del tomo/jurisdicción (Lugar canónico)",
+          };
+        }
+      }
+      if (key === "pais" || key === "country" || key === "nacion" || key === "nación") {
+        if (inheritedContext.country) {
+          return {
+            value: inheritedContext.country,
+            reason: "Campo heredado del tomo/jurisdicción (País)",
+          };
+        }
+      }
+      if (
+        key === "estado" ||
+        key === "state" ||
+        key === "provincia" ||
+        key === "departamento"
+      ) {
+        if (inheritedContext.state) {
+          return {
+            value: inheritedContext.state,
+            reason: "Campo heredado del tomo/jurisdicción (Estado / Provincia)",
+          };
+        }
+      }
+      if (key === "municipio" || key === "municipality" || key === "canton" || key === "cantón") {
+        if (inheritedContext.municipality) {
+          return {
+            value: inheritedContext.municipality,
+            reason: "Campo heredado del tomo/jurisdicción (Municipio)",
+          };
+        }
+      }
+      if (
+        key === "ciudad" ||
+        key === "localidad" ||
+        key === "city" ||
+        key === "pueblo" ||
+        key === "city_or_locality"
+      ) {
+        if (inheritedContext.city_or_locality) {
+          return {
+            value: inheritedContext.city_or_locality,
+            reason: "Campo heredado del tomo/jurisdicción (Ciudad / Localidad)",
           };
         }
       }
@@ -1553,41 +1614,60 @@ export default function VisorDual() {
 
           {/* Form Content Area */}
           <div className="flex-1 overflow-auto p-6 space-y-4">
-            {/* Inherited Context Card (T04-FE-02) */}
+            {/* Inherited Context Card (SPEC-013 T04-FE-02) */}
             {inheritedContext &&
-              (inheritedContext.parish_name ||
+              (inheritedContext.canonical_place ||
+                inheritedContext.parish_name ||
                 inheritedContext.diocese_name ||
                 inheritedContext.tome_number ||
                 inheritedContext.year_start ||
                 inheritedContext.year_end) && (
-                <div className="bg-gray-100 border border-gray-200 rounded-md p-3 text-xs text-gray-700 flex items-center justify-between shadow-2xs mb-4">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <Lock className="w-4 h-4 text-gray-500 shrink-0" />
-                    <div className="truncate">
-                      <span className="font-semibold text-gray-800">
-                        Contexto Heredado del Tomo (Solo lectura):
-                      </span>{" "}
-                      <span>
-                        {[
-                          inheritedContext.diocese_name,
-                          inheritedContext.parish_name,
-                          inheritedContext.tome_number
-                            ? `Tomo ${inheritedContext.tome_number}`
-                            : null,
-                          inheritedContext.year_start || inheritedContext.year_end
-                            ? `Años: ${inheritedContext.year_start || "?"}-${
-                                inheritedContext.year_end || "?"
-                              }`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" | ")}
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 shadow-2xs mb-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 mb-2">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-900 truncate">
+                      <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span className="truncate">
+                        Localidad:{" "}
+                        <span className="text-blue-700">
+                          {inheritedContext?.canonical_place || "No asignada"}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] uppercase font-mono tracking-wider text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded shrink-0">
+                      <Lock className="w-3 h-3 text-slate-500" />
+                      <span>Solo Lectura</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                    <div>
+                      <span className="text-slate-400 font-medium">Parroquia:</span>{" "}
+                      <span className="font-medium text-slate-700">
+                        {inheritedContext?.parish_name || "..."}
+                      </span>
+                    </div>
+                    <span className="text-slate-300">•</span>
+                    <div>
+                      <span className="text-slate-400 font-medium">Diócesis:</span>{" "}
+                      <span className="font-medium text-slate-700">
+                        {inheritedContext?.diocese_name || "..."}
+                      </span>
+                    </div>
+                    <span className="text-slate-300">•</span>
+                    <div>
+                      <span className="text-slate-400 font-medium">Tomo:</span>{" "}
+                      <span className="font-medium text-slate-700">
+                        {inheritedContext?.tome_number || "..."}
+                      </span>
+                    </div>
+                    <span className="text-slate-300">•</span>
+                    <div>
+                      <span className="text-slate-400 font-medium">Años:</span>{" "}
+                      <span className="font-medium text-slate-700">
+                        {inheritedContext?.year_start || "..."} - {inheritedContext?.year_end || "..."}
                       </span>
                     </div>
                   </div>
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded ml-2 shrink-0">
-                    Fijo
-                  </span>
                 </div>
               )}
 

@@ -50,25 +50,25 @@ Las tareas están organizadas en 6 fases secuenciales. La ejecución debe progre
 
 ## Fase 3: Frontend - Formulario y Modal con Autocompletado Territorial (`CreateFolderModal.tsx`)
 
-- [ ] **T03-FE-01**: Actualizar los tipos TypeScript en `frontend/src/types/folders.ts` y `frontend/src/components/folders/types.ts` para tipar `GeographicMetadata` y los campos territoriales dentro de `DocumentFolder.metadata`.
-- [ ] **T03-FE-02**: Crear el hook de React `useGeographicSuggestions(tenantId)` para consultar y cachear los valores de `GET /api/v1/folders/geographic-suggestions`.
-- [ ] **T03-FE-03**: Rediseñar `frontend/src/components/folders/CreateFolderModal.tsx`:
+- [x] **T03-FE-01**: Actualizar los tipos TypeScript en `frontend/src/types/folders.ts` y `frontend/src/components/folders/types.ts` para tipar `GeographicMetadata` y los campos territoriales dentro de `DocumentFolder.metadata`.
+- [x] **T03-FE-02**: Crear el hook de React `useGeographicSuggestions(tenantId)` para consultar y cachear los valores de `GET /api/v1/folders/geographic-suggestions`.
+- [x] **T03-FE-03**: Rediseñar `frontend/src/components/folders/CreateFolderModal.tsx`:
   - Agregar sección colapsable con encabezado `"📍 Jurisdicción Territorial y Localidad Geográfica"` con icono `ChevronDown` / `ChevronUp`.
   - Mantener la sección expandida por defecto para tipos `root` y `parish`, y colapsable para `series` y `tome`.
   - Agregar campos de formulario para `country`, `state`, `municipality`, `city_or_locality`, `diocese_name` y `parish_name`.
   - Vincular los inputs a `<datalist>` HTML dinámicos alimentados por el hook de sugerencias para ofrecer autocompletado en tiempo real sin restringir texto libre.
-- [ ] **T03-FE-04**: Implementar en `CreateFolderModal.tsx` el prellenado inteligente: al crear una subcarpeta o tomo (`parentFolder` definido), inicializar los campos territoriales con los valores existentes en el padre, permitiendo al usuario sobreescribirlos si es necesario.
-- [ ] **T03-FE-05**: Asegurar que al someter el formulario en `CreateFolderModal.tsx`, los campos geográficos no vacíos se guarden dentro del objeto `metadata` tanto en creación (`POST`) como en edición (`PATCH`).
+- [x] **T03-FE-04**: Implementar en `CreateFolderModal.tsx` el prellenado inteligente: al crear una subcarpeta o tomo (`parentFolder` definido), inicializar los campos territoriales con los valores existentes en el padre, permitiendo al usuario sobreescribirlos si es necesario.
+- [x] **T03-FE-05**: Asegurar que al someter el formulario en `CreateFolderModal.tsx`, los campos geográficos no vacíos se guarden dentro del objeto `metadata` tanto en creación (`POST`) como en edición (`PATCH`).
 
 ---
 
 ## Fase 4: Frontend - Tarjeta Contextual y Bloqueo de Campos en Visor (`visor/page.tsx`)
 
-- [ ] **T04-FE-01**: Actualizar la interfaz `InheritedContext` en `frontend/src/types/folioEntries.ts` para incluir `country`, `state`, `municipality`, `city_or_locality`, `canonical_place`.
-- [ ] **T04-FE-02**: Rediseñar la tarjeta superior de contexto en `frontend/src/app/[subdomain]/visor/page.tsx`:
+- [x] **T04-FE-01**: Actualizar la interfaz `InheritedContext` en `frontend/src/types/folioEntries.ts` para incluir `country`, `state`, `municipality`, `city_or_locality`, `canonical_place`.
+- [x] **T04-FE-02**: Rediseñar la tarjeta superior de contexto en `frontend/src/app/[subdomain]/visor/page.tsx`:
   - Reemplazar la caja gris actual por una tarjeta estilizada con badge `📍 Localidad: {inheritedContext.canonical_place || 'No asignada'}`.
   - Incluir candado de solo lectura e información complementaria: Parroquia, Diócesis, Tomo y Años.
-- [ ] **T04-FE-03**: Ampliar la función `getInheritedFieldInfo(field)` en `visor/page.tsx` para detectar campos de plantilla asociados a localidad y geografía:
+- [x] **T04-FE-03**: Ampliar la función `getInheritedFieldInfo(field)` en `visor/page.tsx` para detectar campos de plantilla asociados a localidad y geografía:
   - `lugar`, `place`, `lugar_suceso`, `lugar_bautismo`, `lugar_evento` $\rightarrow$ asignar `canonical_place`.
   - `pais`, `country`, `nacion` $\rightarrow$ asignar `country`.
   - `estado`, `state`, `provincia`, `departamento` $\rightarrow$ asignar `state`.

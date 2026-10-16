@@ -24,4 +24,9 @@ export interface InheritedContext {
   tome_number?: string | null;
   year_start?: number | string | null;
   year_end?: number | string | null;
+  country?: string | null;
+  state?: string | null;
+  municipality?: string | null;
+  city_or_locality?: string | null;
+  canonical_place?: string | null;
 }
