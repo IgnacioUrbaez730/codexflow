@@ -11,6 +11,7 @@ import {
   ChevronDown, 
   Plus, 
   Pencil, 
+  Trash2,
   Layers
 } from "lucide-react";
 import { DocumentFolder, FolderType } from "./types";
@@ -21,6 +22,7 @@ interface DocumentFolderTreeProps {
   onSelectFolder: (folder: DocumentFolder) => void;
   onCreateFolder?: (parent?: DocumentFolder | null) => void;
   onEditFolder?: (folder: DocumentFolder) => void;
+  onDeleteFolder?: (folder: DocumentFolder) => void;
   userRole?: string;
   loading?: boolean;
 }
@@ -31,6 +33,7 @@ export default function DocumentFolderTree({
   onSelectFolder,
   onCreateFolder,
   onEditFolder,
+  onDeleteFolder,
   userRole = "digitizer",
   loading = false,
 }: DocumentFolderTreeProps) {
@@ -176,6 +179,19 @@ export default function DocumentFolderTree({
                     className="p-1 hover:bg-blue-200 text-blue-700 rounded"
                   >
                     <Pencil className="w-3 h-3" />
+                  </button>
+                )}
+                {onDeleteFolder && !(node.metadata?.is_virtual_unclassified || node.metadata?.system_managed || node.name?.toLowerCase().includes("sin clasificar")) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteFolder(node);
+                    }}
+                    title="Eliminar Tomo/Carpeta"
+                    className="p-1 hover:bg-red-200 text-red-600 rounded"
+                  >
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 )}
                 {onCreateFolder && !isTome && (

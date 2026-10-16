@@ -15,7 +15,8 @@ import {
   Pencil, 
   ExternalLink,
   Plus,
-  Download
+  Download,
+  Trash2
 } from "lucide-react";
 import TemplateBuilder from "./TemplateBuilder";
 import DocumentFolderTree from "@/components/folders/DocumentFolderTree";
@@ -68,6 +69,11 @@ export default function IngestHub() {
   const [parentForCreate, setParentForCreate] = useState<DocumentFolder | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [userToken, setUserToken] = useState<string | null>(null);
+
+  // Modal delete folder states
+  const [isDeleteFolderModalOpen, setIsDeleteFolderModalOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<DocumentFolder | null>(null);
+  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
 
   const canManageFolders = userRole === "admin" || userRole === "archivist" || userRole === "superadmin";
 
@@ -510,6 +516,54 @@ export default function IngestHub() {
     }
   };
 
+  // Delete folder logic
+  const handleDeleteFolderClick = (folder: DocumentFolder) => {
+    setFolderToDelete(folder);
+    setIsDeleteFolderModalOpen(true);
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!folderToDelete) return;
+    setIsDeletingFolder(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || userToken;
+      if (!token) throw new Error("No hay sesión activa.");
+
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (tenantId) {
+        headers["X-Tenant-ID"] = tenantId;
+      }
+
+      const res = await fetch(`/api/v1/folders/${folderToDelete.id}?reassign_to_unclassified=true`, {
+        method: "DELETE",
+        headers,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Error al eliminar la carpeta.");
+      }
+
+      // Éxito: cerrar modal, limpiar folderToDelete y si selectedFolder era la eliminada, limpiar
+      setIsDeleteFolderModalOpen(false);
+      if (selectedFolder?.id === folderToDelete.id) {
+        setSelectedFolder(null);
+      }
+      setFolderToDelete(null);
+
+      // Refrescar árbol y bandeja
+      await fetchFoldersTree();
+      await fetchUnclassifiedFolios();
+    } catch (err: any) {
+      alert(`Error al eliminar carpeta: ${err.message}`);
+    } finally {
+      setIsDeletingFolder(false);
+    }
+  };
+
   const toggleSelectUnclassified = (folioId: string) => {
     setSelectedUnclassifiedIds((prev) =>
       prev.includes(folioId) ? prev.filter((id) => id !== folioId) : [...prev, folioId]
@@ -702,6 +756,7 @@ export default function IngestHub() {
                 setParentForCreate(null);
                 setIsCreateModalOpen(true);
               }}
+              onDeleteFolder={handleDeleteFolderClick}
               userRole={userRole}
               loading={loadingFolders}
             />
@@ -790,18 +845,28 @@ export default function IngestHub() {
                             )}
 
                             {canManageFolders && !isSelectedVirtualUnclassified && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setFolderToEdit(selectedFolder);
-                                  setParentForCreate(null);
-                                  setIsCreateModalOpen(true);
-                                }}
-                                className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1 cursor-pointer"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                                <span>Editar Tomo</span>
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFolderToEdit(selectedFolder);
+                                    setParentForCreate(null);
+                                    setIsCreateModalOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded border transition flex items-center space-x-1 cursor-pointer"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  <span>Editar Tomo</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteFolderClick(selectedFolder)}
+                                  className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 text-xs font-medium rounded transition flex items-center space-x-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Eliminar {selectedFolder.folder_type === "tome" ? "Tomo" : "Carpeta"}</span>
+                                </button>
+                              </>
                             )}
                           </>
                         );
@@ -1318,6 +1383,68 @@ export default function IngestHub() {
         authToken={userToken}
         tenantId={tenantId}
       />
+
+      {/* Modal Confirmación de Eliminación de Carpeta / Tomo */}
+      {isDeleteFolderModalOpen && folderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 text-red-600 mb-4">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">
+                ¿Eliminar {folderToDelete.folder_type === "tome" ? "tomo" : "carpeta"} &apos;{folderToDelete.name}&apos;?
+              </h3>
+            </div>
+
+            <div className="text-sm text-gray-600 mb-6 space-y-2">
+              {(folderToDelete.id === selectedFolder?.id ? folderFolios.length : (folderToDelete.total_folios || 0)) > 0 ? (
+                <p>
+                  Esta carpeta contiene{" "}
+                  <strong className="text-gray-900">
+                    {folderToDelete.id === selectedFolder?.id ? folderFolios.length : folderToDelete.total_folios} folios
+                  </strong>
+                  . Al eliminarla, los folios no se borrarán; serán devueltos automáticamente a la{" "}
+                  <strong>Bandeja de Folios Sin Clasificar</strong> para que puedas reasignarlos a otro tomo.
+                </p>
+              ) : (
+                <p>
+                  ¿Estás seguro de eliminar esta carpeta? Esta acción no se puede deshacer.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                disabled={isDeletingFolder}
+                onClick={() => {
+                  setIsDeleteFolderModalOpen(false);
+                  setFolderToDelete(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition disabled:opacity-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingFolder}
+                onClick={confirmDeleteFolder}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition flex items-center space-x-2 disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                {isDeletingFolder ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <span>Sí, Eliminar</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

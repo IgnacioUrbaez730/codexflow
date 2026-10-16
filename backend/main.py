@@ -2833,6 +2833,8 @@ async def update_folder(
 @app.delete("/api/v1/folders/{folder_id}")
 async def delete_folder(
     folder_id: str,
+    reassign_to_unclassified: bool = Query(True, description="Si es True, devuelve los folios a la bandeja sin clasificar y mueve subcarpetas al padre"),
+    x_tenant_id: Optional[str] = Header(None),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     role = auth.get("role")
@@ -2842,29 +2844,82 @@ async def delete_folder(
             detail="Permiso denegado: solo administradores o archivistas pueden eliminar carpetas"
         )
         
-    tenant_id = auth["tenant_id"]
+    tenant_id = auth.get("tenant_id") or x_tenant_id
+    if not tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere tenant_id para identificar la organización"
+        )
     client = auth.get("user_client") or supabase
     
-    # Verificar existencia
-    existing = client.table("document_folders").select("id").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
+    # Verificar existencia y datos de la carpeta
+    existing = client.table("document_folders").select("*").eq("id", folder_id).eq("tenant_id", tenant_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Carpeta no encontrada")
         
-    # Validar que no tenga carpetas hijas
-    children = client.table("document_folders").select("id").eq("parent_id", folder_id).eq("tenant_id", tenant_id).execute()
-    if children.data and len(children.data) > 0:
+    folder_data = existing.data[0]
+    folder_meta = folder_data.get("metadata") or {}
+    folder_name = (folder_data.get("name") or "").lower()
+
+    # Protección de carpeta virtual del sistema
+    if (
+        folder_meta.get("is_virtual_unclassified") in (True, "true")
+        or folder_meta.get("system_managed") in (True, "true")
+        or "sin clasificar" in folder_name
+    ):
         raise HTTPException(
             status_code=400,
-            detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
+            detail="No se puede eliminar la carpeta del sistema Sin Clasificar"
         )
         
-    # Validar que no tenga folios asignados
-    folios = client.table("folios").select("id").eq("folder_id", folder_id).execute()
-    if folios.data and len(folios.data) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
-        )
+    if reassign_to_unclassified:
+        # 1. Buscar la carpeta virtual de 'Sin Clasificar' del tenant
+        virtual_folder_id = None
+        try:
+            folders_res = supabase.table("document_folders").select("id, name, metadata").eq("tenant_id", tenant_id).execute()
+            for f in (folders_res.data or []):
+                meta = f.get("metadata") or {}
+                fname = (f.get("name") or "").lower()
+                if (
+                    meta.get("is_virtual_unclassified") in (True, "true")
+                    or meta.get("system_managed") in (True, "true")
+                    or "sin clasificar" in fname
+                ):
+                    virtual_folder_id = f["id"]
+                    break
+        except Exception as f_err:
+            print(f"Error finding virtual unclassified folder during delete: {f_err}")
+
+        # 2. Reasignar folios de la carpeta a la carpeta virtual (o None)
+        folios_res = client.table("folios").select("id").eq("folder_id", folder_id).execute()
+        if folios_res.data and len(folios_res.data) > 0:
+            target_folder_id = virtual_folder_id if virtual_folder_id else None
+            client.table("folios").update({
+                "folder_id": target_folder_id,
+                "sequence_order": None
+            }).eq("folder_id", folder_id).execute()
+
+        # 3. Mover subcarpetas al padre de la carpeta eliminada
+        parent_id = folder_data.get("parent_id")
+        client.table("document_folders").update({
+            "parent_id": parent_id
+        }).eq("parent_id", folder_id).eq("tenant_id", tenant_id).execute()
+
+    else:
+        # Si no se permite reasignar, validar que no tenga subcarpetas ni folios
+        children = client.table("document_folders").select("id").eq("parent_id", folder_id).eq("tenant_id", tenant_id).execute()
+        if children.data and len(children.data) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
+            )
+            
+        folios = client.table("folios").select("id").eq("folder_id", folder_id).execute()
+        if folios.data and len(folios.data) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar una carpeta que contiene subcarpetas o folios. Reasigna los contenidos primero."
+            )
         
     client.table("document_folders").delete().eq("id", folder_id).eq("tenant_id", tenant_id).execute()
     return {"status": "success", "message": "Carpeta eliminada exitosamente"}
