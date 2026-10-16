@@ -185,8 +185,20 @@ def generate_familysearch_matrix(
         "padrinos",
         "parroquia",
         "tomo",
+        # Dimensiones geográficas y localidad estandarizada SPEC-013
+        "pais",
+        "estado",
+        "municipio",
+        "ciudad_localidad",
+        "lugar_evento_estandarizado",
         "observaciones_calidad"
     ]
+
+    tome_country = tome_metadata.get("country") or ""
+    tome_state = tome_metadata.get("state") or ""
+    tome_municipality = tome_metadata.get("municipality") or ""
+    tome_city = tome_metadata.get("city_or_locality") or ""
+    tome_canonical_place = tome_metadata.get("canonical_place") or tome_metadata.get("locality") or ""
 
     rows = []
     for entry in entries:
@@ -198,6 +210,26 @@ def generate_familysearch_matrix(
         status = entry.get("status", "pending")
         meta = entry.get("metadata") or {}
         extracted = _extract_person_fields(meta)
+
+        # Campos geográficos con posible sobreescritura específica en partida
+        row_country = meta.get("country") or meta.get("pais") or tome_country
+        row_state = meta.get("state") or meta.get("estado") or meta.get("provincia") or tome_state
+        row_municipality = meta.get("municipality") or meta.get("municipio") or tome_municipality
+        row_city = meta.get("city_or_locality") or meta.get("ciudad") or meta.get("localidad") or tome_city
+        row_canonical_place = (
+            meta.get("canonical_place") or
+            meta.get("lugar_evento_estandarizado") or
+            meta.get("lugar") or
+            tome_canonical_place
+        )
+
+        # Si no hubo sobreescritura canónica explícita pero difieren los componentes individuales:
+        if not meta.get("canonical_place") and not meta.get("lugar_evento_estandarizado") and not meta.get("lugar"):
+            # Si alguno difiere de tome_metadata, reconstruir orden ascendente
+            if (row_country != tome_country or row_state != tome_state or 
+                row_municipality != tome_municipality or row_city != tome_city):
+                parts = [str(p).strip() for p in (row_city, row_municipality, row_state, row_country) if p and str(p).strip()]
+                row_canonical_place = ", ".join(parts) if parts else ""
 
         row_data = [
             canonical_name,
@@ -215,6 +247,11 @@ def generate_familysearch_matrix(
             extracted["godparents"],
             tome_metadata.get("parish_name") or "",
             tome_metadata.get("tome_number") or "",
+            str(row_country or ""),
+            str(row_state or ""),
+            str(row_municipality or ""),
+            str(row_city or ""),
+            str(row_canonical_place or ""),
             extracted["notes"]
         ]
         rows.append(row_data)
@@ -314,14 +351,24 @@ def generate_gedcom_551(
     lines.append("2 FORM LINEAGE-LINKED")
     lines.append("1 CHAR UTF-8")
 
-    place_parts = []
-    if tome_metadata.get("parish_name"):
-        place_parts.append(tome_metadata["parish_name"])
-    if tome_metadata.get("diocese_name"):
-        place_parts.append(tome_metadata["diocese_name"])
-    if tome_metadata.get("location"):
-        place_parts.append(tome_metadata["location"])
-    place_full = ", ".join(place_parts) if place_parts else "Archivo Eclesiástico"
+    # Obtención de lugar canónico estandarizado (SPEC-013 T05-BE-02)
+    canonical_place = (
+        tome_metadata.get("canonical_place") or
+        tome_metadata.get("locality") or
+        ""
+    ).strip()
+
+    # Si canonical_place no está definido pero hay partes tradicionales (compatibilidad hacia atrás)
+    if not canonical_place:
+        place_parts = []
+        if tome_metadata.get("parish_name"):
+            place_parts.append(tome_metadata["parish_name"])
+        if tome_metadata.get("diocese_name"):
+            place_parts.append(tome_metadata["diocese_name"])
+        if tome_metadata.get("location"):
+            place_parts.append(tome_metadata["location"])
+        if place_parts:
+            canonical_place = ", ".join(place_parts)
 
     indi_counter = 0
     fam_counter = 0
@@ -333,6 +380,14 @@ def generate_gedcom_551(
         fid = str(entry.get("folio_id"))
         folio = folio_map.get(fid, {})
         canonical_img = folio.get("canonical_filename") or folio.get("original_filename") or f"folio_{fid}.jpg"
+
+        # Lugar específico de la partida si estuviera sobreescrito
+        entry_place = (
+            meta.get("canonical_place") or
+            meta.get("lugar_evento_estandarizado") or
+            meta.get("lugar") or
+            canonical_place
+        ).strip()
 
         indi_counter += 1
         main_indi_id = f"I{indi_counter}"
@@ -351,7 +406,8 @@ def generate_gedcom_551(
             lines.append("1 BIRT")
             if birt_date:
                 lines.append(f"2 DATE {birt_date}")
-            lines.append(f"2 PLAC {place_full}")
+            if entry_place:
+                lines.append(f"2 PLAC {entry_place}")
 
         # Evento de Bautismo / Matrimonio / Defunción según la serie
         series_code = (tome_metadata.get("series_code") or tome_metadata.get("folder_name") or "").upper()
@@ -362,18 +418,21 @@ def generate_gedcom_551(
                 lines.append("1 MARR")
                 if event_date_parsed:
                     lines.append(f"2 DATE {event_date_parsed}")
-                lines.append(f"2 PLAC {place_full}")
+                if entry_place:
+                    lines.append(f"2 PLAC {entry_place}")
         elif "DEF" in series_code or "ENTIERR" in series_code or "OBIT" in series_code:
             lines.append("1 DEAT")
             if event_date_parsed:
                 lines.append(f"2 DATE {event_date_parsed}")
-            lines.append(f"2 PLAC {place_full}")
+            if entry_place:
+                lines.append(f"2 PLAC {entry_place}")
         else:
             # Por defecto bautismo (CHR)
             lines.append("1 CHR")
             if event_date_parsed:
                 lines.append(f"2 DATE {event_date_parsed}")
-            lines.append(f"2 PLAC {place_full}")
+            if entry_place:
+                lines.append(f"2 PLAC {entry_place}")
 
         # Padrinos / Notas en el evento
         if extracted["godparents"]:
@@ -431,17 +490,21 @@ def generate_manifest_json(
     folios: List[Dict[str, Any]],
     entries: List[Dict[str, Any]],
     total_completed: int,
-    total_revision: int
+    total_revision: int,
+    tome_metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Genera el manifiesto institucional estructurado FamilySearch DIP.
+    Incorpora geographic_coverage con resolución jerárquica (SPEC-013 T05-BE-03).
     """
     total_entries = len(entries)
     quality_score = 100.0
     if total_entries > 0:
         quality_score = round(((total_completed) / total_entries) * 100, 2)
 
-    meta = folder.get("metadata") or {}
+    folder_meta = folder.get("metadata") or {}
+    # Priorizar tome_metadata si se pasa (contexto resuelto), de lo contrario folder_meta
+    t_meta = tome_metadata or folder_meta
 
     files_list = []
     for f in folios:
@@ -456,6 +519,17 @@ def generate_manifest_json(
             "status": f.get("status")
         })
 
+    country = t_meta.get("country") or folder_meta.get("country")
+    state = t_meta.get("state") or folder_meta.get("state")
+    municipality = t_meta.get("municipality") or folder_meta.get("municipality")
+    city_or_locality = t_meta.get("city_or_locality") or folder_meta.get("city_or_locality")
+    standardized_place = (
+        t_meta.get("canonical_place") or
+        t_meta.get("locality") or
+        folder_meta.get("canonical_place") or
+        folder_meta.get("locality")
+    )
+
     manifest = {
         "project_name": "CodexFlow - FamilySearch DIP Export",
         "dip_version": "1.0",
@@ -465,12 +539,20 @@ def generate_manifest_json(
             "id": folder.get("id"),
             "name": folder.get("name"),
             "folder_type": folder.get("folder_type"),
-            "tome_number": meta.get("tome_number") or meta.get("number"),
-            "year_start": meta.get("year_start") or meta.get("start_year"),
-            "year_end": meta.get("year_end") or meta.get("end_year"),
-            "parish_name": meta.get("parish_name"),
-            "diocese_name": meta.get("diocese_name"),
-            "location": meta.get("location") or meta.get("shelf_location")
+            "tome_number": t_meta.get("tome_number") or folder_meta.get("tome_number") or folder_meta.get("number"),
+            "year_start": t_meta.get("year_start") or folder_meta.get("year_start") or folder_meta.get("start_year"),
+            "year_end": t_meta.get("year_end") or folder_meta.get("year_end") or folder_meta.get("end_year"),
+            "parish_name": t_meta.get("parish_name") or folder_meta.get("parish_name"),
+            "diocese_name": t_meta.get("diocese_name") or folder_meta.get("diocese_name"),
+            "location": t_meta.get("location") or folder_meta.get("location") or folder_meta.get("shelf_location"),
+            "geographic_coverage": {
+                "country": country,
+                "state": state,
+                "municipality": municipality,
+                "city_or_locality": city_or_locality,
+                "standardized_place": standardized_place,
+                "is_partially_inherited": True
+            }
         },
         "statistics": {
             "total_folios": len(folios),
@@ -483,3 +565,4 @@ def generate_manifest_json(
         "files": files_list
     }
     return manifest
+

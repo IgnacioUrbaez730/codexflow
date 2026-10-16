@@ -3839,7 +3839,7 @@ async def export_familysearch_package(
     # 4. Generar componentes de datos
     excel_bytes, csv_bytes = generate_familysearch_matrix(entries, folios, tome_metadata)
     gedcom_str = generate_gedcom_551(entries, folios, tome_metadata)
-    manifest_data = generate_manifest_json(folder, folios, entries, total_completed, total_revision)
+    manifest_data = generate_manifest_json(folder, folios, entries, total_completed, total_revision, tome_metadata=tome_metadata)
     manifest_bytes = json.dumps(manifest_data, ensure_ascii=False, indent=2).encode("utf-8")
 
     # 5. Generar paquete ZIP

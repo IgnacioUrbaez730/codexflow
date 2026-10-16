@@ -80,16 +80,16 @@ Las tareas están organizadas en 6 fases secuenciales. La ejecución debe progre
 
 ## Fase 5: Motor de Exportación FamilySearch DIP (DIP Package)
 
-- [ ] **T05-BE-01**: Enriquecer la función `generate_familysearch_matrix` en `backend/exporters/familysearch.py`:
+- [x] **T05-BE-01**: Enriquecer la función `generate_familysearch_matrix` en `backend/exporters/familysearch.py`:
   - Agregar a las cabeceras de Excel y CSV las columnas: `pais`, `estado`, `municipio`, `ciudad_localidad`, `lugar_evento_estandarizado`.
   - Llenar cada fila con las dimensiones resueltas en `tome_metadata` o las específicas de la partida si existieran.
   - Garantizar autoajuste de ancho de columnas en `openpyxl` y preservar delimitador `;` con BOM en CSV.
-- [ ] **T05-BE-02**: Enriquecer la función `generate_gedcom_551` en `backend/exporters/familysearch.py`:
+- [x] **T05-BE-02**: Enriquecer la función `generate_gedcom_551` en `backend/exporters/familysearch.py`:
   - En los eventos vitales (`BIRT`, `CHR`, `MARR`, `DEAT`), asignar la etiqueta `2 PLAC {canonical_place}` utilizando la cadena estándar en orden ascendente.
   - Implementar caso límite: si no existe localidad en ningún nivel ni en el perfil del tenant, omitir de forma segura la etiqueta `2 PLAC` sin romper la sintaxis del registro `INDI`.
-- [ ] **T05-BE-03**: Enriquecer la función `generate_manifest_json` en `backend/exporters/familysearch.py`:
+- [x] **T05-BE-03**: Enriquecer la función `generate_manifest_json` en `backend/exporters/familysearch.py`:
   - Incorporar en el objeto `tome_info` el nodo `geographic_coverage` con: `country`, `state`, `municipality`, `city_or_locality`, `standardized_place` e `is_partially_inherited`.
-- [ ] **T05-BE-04**: Verificar en `backend/main.py` (`export_familysearch_package`) que el diccionario `tome_metadata` enviado a los tres generadores contenga la resolución completa de `_resolve_folder_inherited_context`.
+- [x] **T05-BE-04**: Verificar en `backend/main.py` (`export_familysearch_package`) que el diccionario `tome_metadata` enviado a los tres generadores contenga la resolución completa de `_resolve_folder_inherited_context`.
 
 ---
 
