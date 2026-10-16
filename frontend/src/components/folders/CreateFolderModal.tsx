@@ -135,6 +135,13 @@ export default function CreateFolderModal({
 
       if (folderToEdit) {
         // PATCH
+        const patchPayload: Record<string, any> = {
+          name: trimmedName,
+          folder_type: folderType,
+          parent_id: parentId ? parentId : null,
+          metadata,
+        };
+
         const res = await fetch(`/api/v1/folders/${folderToEdit.id}`, {
           method: "PATCH",
           headers: {
@@ -142,10 +149,7 @@ export default function CreateFolderModal({
             Authorization: `Bearer ${token}`,
             ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
           },
-          body: JSON.stringify({
-            name: trimmedName,
-            metadata,
-          }),
+          body: JSON.stringify(patchPayload),
         });
 
         if (!res.ok) {
@@ -245,10 +249,7 @@ export default function CreateFolderModal({
               <select
                 value={folderType}
                 onChange={(e) => setFolderType(e.target.value as FolderType)}
-                disabled={Boolean(folderToEdit)}
-                className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  folderToEdit ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""
-                }`}
+                className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="root">Fondo / Diócesis</option>
                 <option value="parish">Parroquia / Notaría</option>
@@ -264,10 +265,7 @@ export default function CreateFolderModal({
               <select
                 value={parentId}
                 onChange={(e) => setParentId(e.target.value)}
-                disabled={Boolean(folderToEdit)}
-                className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  folderToEdit ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""
-                }`}
+                className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">(Ninguna - Nivel Raíz)</option>
                 {flatFolderOptions.map((f) => (

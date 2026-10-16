@@ -91,6 +91,8 @@ class FolderCreate(BaseModel):
 
 class FolderUpdate(BaseModel):
     name: Optional[str] = None
+    folder_type: Optional[FolderType] = None
+    parent_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 class FolderResponse(BaseModel):
@@ -2762,6 +2764,7 @@ async def create_folder(
 async def update_folder(
     folder_id: str,
     folder_in: FolderUpdate,
+    x_tenant_id: Optional[str] = Header(None),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     role = auth.get("role")
@@ -2771,7 +2774,12 @@ async def update_folder(
             detail="Permiso denegado: solo administradores o archivistas pueden modificar carpetas"
         )
         
-    tenant_id = auth["tenant_id"]
+    tenant_id = auth.get("tenant_id") or x_tenant_id
+    if not tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere tenant_id para identificar la organización"
+        )
     client = auth.get("user_client") or supabase
     
     # Verificar existencia
@@ -2782,6 +2790,32 @@ async def update_folder(
     update_data = {}
     if folder_in.name is not None:
         update_data["name"] = folder_in.name
+
+    if folder_in.folder_type is not None:
+        update_data["folder_type"] = (
+            folder_in.folder_type.value
+            if hasattr(folder_in.folder_type, "value")
+            else str(folder_in.folder_type)
+        )
+
+    if folder_in.parent_id is not None:
+        if folder_in.parent_id == "":
+            update_data["parent_id"] = None
+        elif folder_in.parent_id == folder_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Una carpeta no puede ser padre de sí misma"
+            )
+        else:
+            # Validar que la carpeta padre pertenezca al tenant_id
+            parent_check = client.table("document_folders").select("id").eq("id", folder_in.parent_id).eq("tenant_id", tenant_id).execute()
+            if not parent_check.data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="La carpeta contenedora especificada no existe en la organización"
+                )
+            update_data["parent_id"] = folder_in.parent_id
+
     if folder_in.metadata is not None:
         update_data["metadata"] = folder_in.metadata
         
@@ -2793,6 +2827,7 @@ async def update_folder(
         raise HTTPException(status_code=500, detail="Error al actualizar la carpeta")
         
     return {"status": "success", "data": res.data[0]}
+
 
 
 @app.delete("/api/v1/folders/{folder_id}")
