@@ -81,8 +81,21 @@ class FolderMetadata(BaseModel):
     year_end: Optional[int] = None
     location: Optional[str] = None
     template_id: Optional[str] = None
-    parish_name: Optional[str] = None
+    # Dimensiones Geográficas y Eclesiásticas SPEC-013
+    country: Optional[str] = None
+    state: Optional[str] = None
+    municipality: Optional[str] = None
+    city_or_locality: Optional[str] = None
     diocese_name: Optional[str] = None
+    parish_name: Optional[str] = None
+
+class GeographicSuggestionsResponse(BaseModel):
+    countries: List[str] = []
+    states: List[str] = []
+    municipalities: List[str] = []
+    cities_or_localities: List[str] = []
+    dioceses: List[str] = []
+    parishes: List[str] = []
 
 class FolderCreate(BaseModel):
     name: str
@@ -3132,6 +3145,94 @@ async def get_folders_tree(
     return {"status": "success", "data": tree}
 
 
+@app.get("/api/v1/folders/geographic-suggestions")
+async def get_geographic_suggestions(
+    x_tenant_id: Optional[str] = Header(None),
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    """
+    T02-BE-01: Extrae, limpia y deduplica listas ordenadas de dimensiones territoriales
+    usadas en las carpetas de la organización para autocompletado en frontend.
+    """
+    tenant_id = auth.get("tenant_id") or x_tenant_id
+    if not tenant_id:
+        return {
+            "status": "success",
+            "data": {
+                "countries": [],
+                "states": [],
+                "municipalities": [],
+                "cities_or_localities": [],
+                "dioceses": [],
+                "parishes": []
+            }
+        }
+
+    client = auth.get("user_client") or supabase
+    try:
+        folders_res = client.table("document_folders").select("name, folder_type, metadata").eq("tenant_id", tenant_id).execute()
+        folders = folders_res.data or []
+    except Exception as e:
+        print(f"Error fetching folders for geographic suggestions: {e}")
+        folders = []
+
+    countries_set = set()
+    states_set = set()
+    municipalities_set = set()
+    cities_set = set()
+    dioceses_set = set()
+    parishes_set = set()
+
+    # Incluir país y estado por defecto del tenant si existen
+    try:
+        t_res = client.table("tenants").select("country, state").eq("id", tenant_id).execute()
+        if t_res.data and len(t_res.data) > 0:
+            t_row = t_res.data[0]
+            if t_row.get("country") and str(t_row["country"]).strip():
+                countries_set.add(str(t_row["country"]).strip())
+            if t_row.get("state") and str(t_row["state"]).strip():
+                states_set.add(str(t_row["state"]).strip())
+    except Exception as t_err:
+        print(f"Notice fetching tenant geo for suggestions: {t_err}")
+
+    for f in folders:
+        meta = f.get("metadata") or {}
+        ftype = f.get("folder_type")
+        fname = (f.get("name") or "").strip()
+
+        # Extraer de metadata
+        if meta.get("country") and str(meta["country"]).strip():
+            countries_set.add(str(meta["country"]).strip())
+        if meta.get("state") and str(meta["state"]).strip():
+            states_set.add(str(meta["state"]).strip())
+        if meta.get("municipality") and str(meta["municipality"]).strip():
+            municipalities_set.add(str(meta["municipality"]).strip())
+        if meta.get("city_or_locality") and str(meta["city_or_locality"]).strip():
+            cities_set.add(str(meta["city_or_locality"]).strip())
+        if meta.get("diocese_name") and str(meta["diocese_name"]).strip():
+            dioceses_set.add(str(meta["diocese_name"]).strip())
+        if meta.get("parish_name") and str(meta["parish_name"]).strip():
+            parishes_set.add(str(meta["parish_name"]).strip())
+
+        # Extraer nombres según ftype si son relevantes
+        if ftype == "parish" and fname:
+            parishes_set.add(fname)
+        elif ftype == "root" and fname:
+            dioceses_set.add(fname)
+
+    return {
+        "status": "success",
+        "data": {
+            "countries": sorted(list(countries_set)),
+            "states": sorted(list(states_set)),
+            "municipalities": sorted(list(municipalities_set)),
+            "cities_or_localities": sorted(list(cities_set)),
+            "dioceses": sorted(list(dioceses_set)),
+            "parishes": sorted(list(parishes_set))
+        }
+    }
+
+
 @app.post("/api/v1/folders/{folder_id}/assign-folios")
 async def assign_folios_to_folder(
     folder_id: str,
@@ -3236,21 +3337,73 @@ async def assign_folios_to_folder(
     }
 
 
+def build_canonical_place(
+    city_or_locality: Optional[str] = None,
+    municipality: Optional[str] = None,
+    state: Optional[str] = None,
+    country: Optional[str] = None
+) -> Optional[str]:
+    """
+    Retorna en orden ascendente estándar internacional FamilySearch:
+    "Localidad, Municipio, Estado, País"
+    Filtrando elementos nulos o vacíos.
+    """
+    parts = [str(p).strip() for p in (city_or_locality, municipality, state, country) if p and str(p).strip()]
+    return ", ".join(parts) if parts else None
+
+
+def _fill_tenant_geo_fallback(client: Client, tenant_id: str, context: Dict[str, Any]) -> None:
+    if not tenant_id:
+        return
+    if context.get("country") and context.get("state"):
+        return
+    try:
+        t_res = client.table("tenants").select("country, state, name").eq("id", tenant_id).execute()
+        if t_res.data and len(t_res.data) > 0:
+            t_row = t_res.data[0]
+            if not context.get("country") and t_row.get("country"):
+                val = str(t_row["country"]).strip()
+                if val:
+                    context["country"] = val
+            if not context.get("state") and t_row.get("state"):
+                val = str(t_row["state"]).strip()
+                if val:
+                    context["state"] = val
+    except Exception as t_err:
+        print(f"Warning in _fill_tenant_geo_fallback: {t_err}")
+
+
 def _resolve_folder_inherited_context(client: Client, folder_id: Optional[str], tenant_id: str) -> Dict[str, Any]:
-    context = {
+    context: Dict[str, Any] = {
         "parish_name": None,
         "diocese_name": None,
         "tome_number": None,
         "year_start": None,
         "year_end": None,
+        "country": None,
+        "state": None,
+        "municipality": None,
+        "city_or_locality": None,
+        "canonical_place": None
     }
     if not folder_id:
+        _fill_tenant_geo_fallback(client, tenant_id, context)
+        context["canonical_place"] = build_canonical_place(
+            context.get("city_or_locality"),
+            context.get("municipality"),
+            context.get("state"),
+            context.get("country")
+        )
         return context
 
     current_id = folder_id
-    for _ in range(5):
-        if not current_id:
+    visited = set()
+
+    for _ in range(8):  # Protección contra ciclos (hasta 8 niveles)
+        if not current_id or current_id in visited:
             break
+        visited.add(current_id)
+
         res = client.table("document_folders").select("*").eq("id", current_id).eq("tenant_id", tenant_id).execute()
         if not res.data:
             break
@@ -3259,6 +3412,7 @@ def _resolve_folder_inherited_context(client: Client, folder_id: Optional[str], 
         ftype = folder.get("folder_type")
         fname = folder.get("name")
 
+        # Asignaciones estructurales por tipo
         if ftype == "tome":
             if not context["tome_number"]:
                 context["tome_number"] = meta.get("tome_number") or meta.get("number") or fname
@@ -3268,15 +3422,18 @@ def _resolve_folder_inherited_context(client: Client, folder_id: Optional[str], 
                 context["year_end"] = meta.get("year_end") or meta.get("end_year")
         elif ftype == "parish":
             if not context["parish_name"]:
-                context["parish_name"] = fname
+                context["parish_name"] = meta.get("parish_name") or fname
         elif ftype == "root":
             if not context["diocese_name"]:
-                context["diocese_name"] = fname
+                context["diocese_name"] = meta.get("diocese_name") or fname
 
-        if not context["parish_name"] and meta.get("parish_name"):
-            context["parish_name"] = meta.get("parish_name")
-        if not context["diocese_name"] and meta.get("diocese_name"):
-            context["diocese_name"] = meta.get("diocese_name")
+        # Campos geográficos y jurisdiccionales con sobreescritura parcial
+        for field in ("country", "state", "municipality", "city_or_locality", "diocese_name", "parish_name"):
+            if not context[field] and meta.get(field):
+                val = str(meta[field]).strip()
+                if val:
+                    context[field] = val
+
         if not context["tome_number"] and meta.get("tome_number"):
             context["tome_number"] = meta.get("tome_number")
         if not context["year_start"] and (meta.get("year_start") or meta.get("start_year")):
@@ -3286,6 +3443,16 @@ def _resolve_folder_inherited_context(client: Client, folder_id: Optional[str], 
 
         current_id = folder.get("parent_id")
 
+    # Fallback final a datos del tenant para país y estado si siguen vacíos
+    _fill_tenant_geo_fallback(client, tenant_id, context)
+
+    # Consolidación de la cadena canónica estándar FamilySearch
+    context["canonical_place"] = build_canonical_place(
+        context.get("city_or_locality"),
+        context.get("municipality"),
+        context.get("state"),
+        context.get("country")
+    )
     return context
 
 
@@ -3332,6 +3499,11 @@ async def get_folio_entries(
     inherited_tome_metadata = {
         "diocese": inherited_context.get("diocese_name") or "",
         "parish": inherited_context.get("parish_name") or "",
+        "locality": inherited_context.get("canonical_place") or "",
+        "country": inherited_context.get("country") or "",
+        "state": inherited_context.get("state") or "",
+        "municipality": inherited_context.get("municipality") or "",
+        "city_or_locality": inherited_context.get("city_or_locality") or "",
         "series": "",
         "tome": str(inherited_context.get("tome_number") or ""),
         "years_range": f"{inherited_context.get('year_start') or ''}-{inherited_context.get('year_end') or ''}".strip("-")
@@ -3533,6 +3705,24 @@ async def get_folder_pre_export_summary(
 
     has_revisions = revision_entries > 0
 
+    # T02-BE-03: Resolver contexto geográfico y validar localidad mínima
+    tome_context = _resolve_folder_inherited_context(client, folder_id, tenant_id)
+    warnings: List[str] = []
+    if not tome_context.get("country") or not tome_context.get("state"):
+        warnings.append(
+            "Aviso: El tomo no tiene localidad completa (País o Estado ausente). "
+            "Se recomienda completarla para interoperabilidad óptima con FamilySearch."
+        )
+
+    geographic_summary = {
+        "country": tome_context.get("country"),
+        "state": tome_context.get("state"),
+        "municipality": tome_context.get("municipality"),
+        "city_or_locality": tome_context.get("city_or_locality"),
+        "canonical_place": tome_context.get("canonical_place"),
+        "is_complete": bool(tome_context.get("country") and tome_context.get("state"))
+    }
+
     return {
         "status": "success",
         "data": {
@@ -3546,7 +3736,10 @@ async def get_folder_pre_export_summary(
             "pending_entries": pending_entries,
             "has_revisions": has_revisions,
             "doubtful_folios_count": len(doubtful_folios),
-            "ready_for_export": total_folios > 0
+            "ready_for_export": total_folios > 0,
+            "warnings": warnings,
+            "tome_context": tome_context,
+            "geographic_summary": geographic_summary
         }
     }
 
