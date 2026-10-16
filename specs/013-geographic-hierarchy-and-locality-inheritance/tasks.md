@@ -95,13 +95,13 @@ Las tareas están organizadas en 6 fases secuenciales. La ejecución debe progre
 
 ## Fase 6: Pruebas de Integración y Validación QA
 
-- [ ] **T06-QA-01**: Validar la resolución ascendente en backend con pruebas unitarias:
+- [x] **T06-QA-01**: Validar la resolución ascendente en backend con pruebas unitarias:
   - Caso 1: Valores definidos solo en Diócesis raíz se heredan hasta el Tomo.
   - Caso 2: Parroquia redefine Municipio y Tomo redefine Localidad conservando País y Estado de la raíz.
-- [ ] **T06-QA-02**: Validar en frontend la sugerencia en datalists y el prellenado automático al abrir el modal para crear carpetas hijas en `CreateFolderModal.tsx`.
-- [ ] **T06-QA-03**: Validar en el Visor de Indexación que los campos de plantilla redundantes queden bloqueados en solo lectura con sus valores heredados correspondientes.
-- [ ] **T06-QA-04**: Validar el paquete DIP generado (`.ZIP`):
+- [x] **T06-QA-02**: Validar en frontend la sugerencia en datalists y el prellenado automático al abrir el modal para crear carpetas hijas en `CreateFolderModal.tsx`.
+- [x] **T06-QA-03**: Validar en el Visor de Indexación que los campos de plantilla redundantes queden bloqueados en solo lectura con sus valores heredados correspondientes.
+- [x] **T06-QA-04**: Validar el paquete DIP generado (`.ZIP`):
   - Verificar que `matriz_indexacion.xlsx` y `matriz_indexacion.csv` contengan las 5 columnas geográficas completas.
   - Validar sintácticamente `export_gedcom.ged` asegurando la presencia de `2 PLAC` bien formateado y la correcta omisión cuando no hay datos.
   - Validar la presencia de `tome_info.geographic_coverage` en `manifest.json`.
-- [ ] **T06-QA-05**: Validar el recálculo retroactivo: modificar la localidad de una parroquia padre y verificar inmediatamente que las exportaciones y vistas de folios hijos reflejen los nuevos valores sin tocar folios en base de datos.
+- [x] **T06-QA-05**: Validar el recálculo retroactivo: modificar la localidad de una parroquia padre y verificar inmediatamente que las exportaciones y vistas de folios hijos reflejen los nuevos valores sin tocar folios en base de datos.

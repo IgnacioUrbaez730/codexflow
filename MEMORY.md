@@ -28,6 +28,20 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
   5. Subcarpeta `images/` con las fotos en alta resolución (opcional en paquete integral).
 - **Auditoría de Calidad:** Endpoint `GET /api/v1/folders/{id}/pre-export-summary` y diálogo modal `ExportFamilySearchModal.tsx` con semáforo de calidad que alerta sobre partidas pendientes/dudosas antes de descargar.
 
+## Módulo 13 COMPLETADO: Jerarquía Geográfica, Jurisdicción Territorial y Herencia de Localidad (FamilySearch Standard)
+
+- **Captura y Metadatos JSONB:** Extensión de `document_folders.metadata` para registrar `country`, `state`, `municipality`, `city_or_locality`, `diocese_name` y `parish_name`.
+- **Motor de Resolución Ascendente Dinámico:** Función `_resolve_folder_inherited_context` en `backend/main.py` con búsqueda recursiva de hasta 8 niveles, protección anti-ciclos (`visited`), sobreescritura parcial hoja->padre->raíz, fallback al perfil del tenant y construcción canónica estándar internacional `build_canonical_place("Localidad, Municipio, Estado, País")`.
+- **Autocompletado Territorial:** Endpoint `GET /api/v1/folders/geographic-suggestions` y hook React `useGeographicSuggestions` para sugerir dinámicamente opciones en `<datalist>` HTML libres de discrepancias tipográficas.
+- **Formulario y Prellenado:** Sección colapsable `"📍 Jurisdicción Territorial y Localidad Geográfica"` en `CreateFolderModal.tsx`, prellenando automáticamente los datos del padre al crear subcarpetas o tomos.
+- **Visor Dual Ergonómico:** Badge `📍 Localidad: ...` con candado en la tarjeta superior. La función `getInheritedFieldInfo` detecta y bloquea en solo lectura campos de plantilla redundantes (`lugar`, `pais`, `estado`, `municipio`, `ciudad`) inyectando el valor heredado.
+- **Motor de Exportación DIP FamilySearch Homologado:**
+  1. `matriz_indexacion.xlsx` y `matriz_indexacion.csv`: Incluyen las 5 columnas geográficas completas (`pais`, `estado`, `municipio`, `ciudad_localidad`, `lugar_evento_estandarizado`).
+  2. `export_gedcom.ged`: Inyección de `2 PLAC {canonical_place}` en eventos vitales (`BIRT`, `CHR`, `MARR`, `DEAT`) con omisión segura si no hay datos sin quebrar el estándar GEDCOM 5.5.1.
+  3. `manifest.json`: Ficha técnica de calidad enriquecida con `tome_info.geographic_coverage`.
+  4. `pre-export-summary`: Advertencias no bloqueantes si faltan País o Estado.
+- **Retroactividad Dinámica:** Toda la resolución opera en memoria en tiempo de consulta/exportación; cualquier cambio en la localidad de una parroquia se refleja inmediatamente en sus tomos y folios sin alterar la base de datos de folios.
+
 ## Próximos pasos (Pendientes)
 - **FASE DE GESTIÓN DOCUMENTAL E INTEROPERABILIDAD FAMILYSEARCH (Spec 012):**
   - Espec formal creada: specs/012-folder-management-familysearch-interoperability/spec.md.
