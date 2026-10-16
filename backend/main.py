@@ -9,6 +9,7 @@ import boto3
 from botocore.client import Config
 from datetime import datetime, timedelta, timezone
 import json
+import unicodedata
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
@@ -108,6 +109,74 @@ class FolderResponse(BaseModel):
 
 class AssignFoliosRequest(BaseModel):
     folio_ids: List[str]
+
+
+def compute_canonical_filename(
+    tenant_subdomain: str,
+    tome_name: str,
+    tome_number: Optional[str],
+    sequence_order: int,
+    original_filename_or_url: Optional[str] = None
+) -> str:
+    """
+    Calcula el nombre canónico de folio según el estándar oficial de FamilySearch:
+    [ORGANIZACION]_[SERIE_O_PARROQUIA]_T[NUM_TOMO]_F[NUM_FOLIO_4_DIGITOS].[extension]
+    Ejemplos:
+      - CARUPANO_BAUTISMOS_T01_F0001.jpg
+      - BAUTISMOS_T01_F0001.jpg (o CODEX_BAUTISMOS_T01_F0001.jpg)
+    """
+    def sanitize(text: Optional[str]) -> str:
+        if not text:
+            return ""
+        norm = unicodedata.normalize("NFKD", str(text))
+        ascii_text = norm.encode("ASCII", "ignore").decode("ASCII")
+        clean = re.sub(r"[^A-Za-z0-9]+", "_", ascii_text)
+        return clean.strip("_").upper()
+
+    clean_org = sanitize(tenant_subdomain)
+    if not clean_org or clean_org in ("DEFAULT", "PUBLIC"):
+        clean_org = "CODEX"
+
+    clean_tome_name = sanitize(tome_name)
+    if not clean_tome_name:
+        clean_tome_name = "TOMO"
+
+    raw_num = ""
+    if tome_number:
+        match = re.search(r"\d+", str(tome_number))
+        if match:
+            raw_num = match.group(0)
+    if not raw_num:
+        match = re.search(r"\d+", str(tome_name))
+        if match:
+            raw_num = match.group(0)
+
+    if raw_num:
+        tome_str = f"T{raw_num.zfill(2)}"
+    else:
+        tome_str = "T01"
+
+    seq = max(1, int(sequence_order or 1))
+    folio_str = f"F{str(seq).zfill(4)}"
+
+    ext = "jpg"
+    if original_filename_or_url:
+        base_name = original_filename_or_url.split("?")[0].split("/")[-1]
+        if "." in base_name:
+            cand_ext = base_name.rsplit(".", 1)[-1].lower()
+            if cand_ext in ("jpg", "jpeg", "png", "webp", "tif", "tiff"):
+                ext = "jpg" if cand_ext == "jpeg" else cand_ext
+
+    parts = []
+    if clean_org:
+        parts.append(clean_org)
+    if clean_tome_name:
+        parts.append(clean_tome_name)
+    parts.append(tome_str)
+    parts.append(folio_str)
+
+    assembled = "_".join(parts)
+    return f"{assembled}.{ext}"
 
 class FolioEntryCreate(BaseModel):
     entry_number: int
@@ -3098,7 +3167,19 @@ async def assign_folios_to_folder(
     if not request.folio_ids:
         return {"status": "success", "message": "0 folios reasignados exitosamente a la carpeta"}
         
-    # 2. Obtener el sequence_order máximo actual en esa carpeta
+    # 2. Obtener información de la organización (tenant) para el nombre canónico
+    tenant_subdomain = ""
+    try:
+        tenant_res = supabase.table("tenants").select("subdomain, name").eq("id", tenant_id).execute()
+        if tenant_res.data and len(tenant_res.data) > 0:
+            tenant_subdomain = tenant_res.data[0].get("subdomain") or tenant_res.data[0].get("name") or ""
+    except Exception as t_err:
+        print(f"Notice fetching tenant in assign_folios: {t_err}")
+
+    tome_name = folder.get("name", "Tomo")
+    tome_number = folder_meta.get("tome_number") or folder_meta.get("number")
+
+    # 3. Obtener el sequence_order máximo actual en esa carpeta
     seq_res = client.table("folios").select("sequence_order").eq("folder_id", folder_id).order("sequence_order", desc=True).limit(1).execute()
     current_max_seq = 0
     if seq_res.data and len(seq_res.data) > 0:
@@ -3106,12 +3187,32 @@ async def assign_folios_to_folder(
         if val is not None:
             current_max_seq = int(val)
             
-    # 3. Asignar cada folio con secuencia correlativa
+    # 4. Asignar cada folio con secuencia correlativa y nombre canónico
     for folio_id in request.folio_ids:
         current_max_seq += 1
+
+        # Obtener folio original para preservar extensión de r2_url u original_filename
+        orig_file_ref = None
+        try:
+            f_row = client.table("folios").select("r2_url, original_filename, file_name, batch_id").eq("id", folio_id).execute()
+            if f_row.data and len(f_row.data) > 0:
+                row_data = f_row.data[0]
+                orig_file_ref = row_data.get("r2_url") or row_data.get("original_filename") or row_data.get("file_name")
+        except Exception:
+            pass
+
+        canonical_name = compute_canonical_filename(
+            tenant_subdomain=tenant_subdomain,
+            tome_name=tome_name,
+            tome_number=tome_number,
+            sequence_order=current_max_seq,
+            original_filename_or_url=orig_file_ref
+        )
+
         update_payload: Dict[str, Any] = {
             "folder_id": folder_id,
-            "sequence_order": current_max_seq
+            "sequence_order": current_max_seq,
+            "canonical_filename": canonical_name
         }
         
         # Si el tomo tiene template_id y el lote del folio lo amerita, se actualiza la referencia
@@ -3472,6 +3573,54 @@ async def export_familysearch_package(
     folios_res = client.table("folios").select("*").eq("folder_id", folder_id).order("sequence_order", desc=False).execute()
     folios = folios_res.data or []
     folio_ids = [f["id"] for f in folios]
+
+    # Obtener el subdominio o nombre de la organización
+    tenant_subdomain = ""
+    try:
+        tenant_res = supabase.table("tenants").select("subdomain, name").eq("id", tenant_id).execute()
+        if tenant_res.data and len(tenant_res.data) > 0:
+            tenant_subdomain = tenant_res.data[0].get("subdomain") or tenant_res.data[0].get("name") or ""
+    except Exception as t_err:
+        print(f"Notice fetching tenant in export_familysearch: {t_err}")
+
+    tome_name = folder.get("name", "Tomo")
+    folder_meta = folder.get("metadata") or {}
+    tome_number = folder_meta.get("tome_number") or folder_meta.get("number")
+
+    # Asegurar nombres canónicos para todos los folios y persistirlos retroactivamente si faltan
+    for idx, f in enumerate(folios, start=1):
+        seq = f.get("sequence_order")
+        if seq is None or seq <= 0:
+            seq = idx
+            f["sequence_order"] = seq
+
+        c_name = f.get("canonical_filename") or ""
+        # Verificar si está vacío o si parece un identificador temporal tipo folio_ UUID
+        needs_canonical = (
+            not c_name or
+            c_name.startswith("folio_") or
+            re.match(r"^folio_[a-f0-9\-]+", c_name, re.IGNORECASE)
+        )
+
+        if needs_canonical:
+            orig_ref = f.get("r2_url") or f.get("original_filename") or f.get("file_name")
+            c_name = compute_canonical_filename(
+                tenant_subdomain=tenant_subdomain,
+                tome_name=tome_name,
+                tome_number=tome_number,
+                sequence_order=seq,
+                original_filename_or_url=orig_ref
+            )
+            f["canonical_filename"] = c_name
+
+            # Persistir en base de datos para que quede guardado permanentemente
+            try:
+                client.table("folios").update({
+                    "canonical_filename": c_name,
+                    "sequence_order": seq
+                }).eq("id", f["id"]).execute()
+            except Exception as upd_err:
+                print(f"Warning persisting canonical_filename for folio {f.get('id')}: {upd_err}")
 
     # 3. Partidas
     entries = []
