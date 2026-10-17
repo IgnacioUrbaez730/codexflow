@@ -634,28 +634,21 @@ def ensure_folio_ai_predictions(
         print(f"Notice fetching template fields in ensure_folio_ai_predictions: {tpl_err}")
 
     existing_preds = folio_data.get("ai_predictions")
-    if not force and isinstance(existing_preds, list) and len(existing_preds) > 0:
-        expected_keys = {
-            str(f.get("id") or f.get("name") or f"field_{idx}")
-            for idx, f in enumerate(template_fields)
-            if isinstance(f, dict)
-        }
-        existing_keys = {
-            str(p.get("fieldKey") or p.get("field_key") or "")
-            for p in existing_preds
-            if isinstance(p, dict) and isinstance(p.get("bbox"), dict)
-        }
-        if (not expected_keys or expected_keys.issubset(existing_keys)) and len(existing_keys) > 0:
+    if not force:
+        if isinstance(existing_preds, list) and len(existing_preds) > 0:
             for p in existing_preds:
                 if isinstance(p, dict) and isinstance(p.get("bbox"), dict) and "bbox_array" not in p:
-                    bx = float(p["bbox"].get("x", 0.1))
-                    by = float(p["bbox"].get("y", 0.1))
-                    bw = float(p["bbox"].get("width", 0.3))
-                    bh = float(p["bbox"].get("height", 0.04))
+                    bx = float(p["bbox"].get("x", 0.0))
+                    by = float(p["bbox"].get("y", 0.0))
+                    bw = float(p["bbox"].get("width", 0.0))
+                    bh = float(p["bbox"].get("height", 0.0))
                     coords = [round(bx, 4), round(by, 4), round(bx + bw, 4), round(by + bh, 4)]
                     p["bbox_array"] = coords
                     p["bbox_coords"] = coords
             return existing_preds
+        # Si folio_data no tiene predicciones guardadas, no inventar datos aleatorios ni forzar valores de simulación
+        folio_data["ai_predictions"] = []
+        return []
 
     if not template_fields:
         return existing_preds if isinstance(existing_preds, list) else []

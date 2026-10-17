@@ -33,46 +33,70 @@ import { shouldPrefillPrediction } from "../../../utils/aiGeometry";
 function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
-    return raw.map((p, idx) => {
-      const bbox = p.bbox || { x: 0.1, y: 0.12 + idx * 0.08, width: 0.76, height: 0.048 };
-      const bboxArray: [number, number, number, number] =
-        Array.isArray(p.bbox_array) && p.bbox_array.length === 4
-          ? (p.bbox_array as [number, number, number, number])
-          : [
-              Number(bbox.x.toFixed(4)),
-              Number(bbox.y.toFixed(4)),
-              Number((bbox.x + bbox.width).toFixed(4)),
-              Number((bbox.y + bbox.height).toFixed(4)),
-            ];
-      return {
-        id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
-        folioId: p.folioId || p.folio_id || folioId,
-        fieldKey: p.fieldKey || p.field_key || "",
-        field_key: p.field_key || p.fieldKey || "",
-        fieldLabel: p.fieldLabel || p.field_label || p.fieldKey || p.field_key || "",
-        suggestedText: p.suggestedText || p.suggested_text || p.value || "",
-        suggested_text: p.suggested_text || p.suggestedText || p.value || "",
-        confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
-        entry_number: p.entry_number || p.entryNumber,
-        entryNumber: p.entryNumber || p.entry_number,
-        bbox,
-        bbox_array: bboxArray,
-        bbox_coords: bboxArray,
-        isValidSyntax: p.isValidSyntax ?? true,
-        modelVersion: p.modelVersion || p.model_version || "v2.0-active-learning",
-      };
-    });
+    return raw
+      .filter((p) => {
+        if (!p || typeof p !== "object") return false;
+        // Solo aceptar predicciones con coordenadas legítimas
+        const hasBbox = p.bbox && typeof p.bbox.x === "number" && typeof p.bbox.y === "number";
+        const hasBboxArray = Array.isArray(p.bbox_array) && p.bbox_array.length === 4;
+        const hasBboxCoords = Array.isArray(p.bbox_coords) && p.bbox_coords.length === 4;
+        return hasBbox || hasBboxArray || hasBboxCoords;
+      })
+      .map((p, idx) => {
+        const bbox = p.bbox || { x: 0, y: 0, width: 0, height: 0 };
+        const bboxArray: [number, number, number, number] =
+          Array.isArray(p.bbox_array) && p.bbox_array.length === 4
+            ? (p.bbox_array as [number, number, number, number])
+            : Array.isArray(p.bbox_coords) && p.bbox_coords.length === 4
+            ? (p.bbox_coords as [number, number, number, number])
+            : [
+                Number(bbox.x.toFixed(4)),
+                Number(bbox.y.toFixed(4)),
+                Number((bbox.x + bbox.width).toFixed(4)),
+                Number((bbox.y + bbox.height).toFixed(4)),
+              ];
+        return {
+          id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
+          folioId: p.folioId || p.folio_id || folioId,
+          fieldKey: p.fieldKey || p.field_key || "",
+          field_key: p.field_key || p.fieldKey || "",
+          fieldLabel: p.fieldLabel || p.field_label || p.fieldKey || p.field_key || "",
+          suggestedText: p.suggestedText || p.suggested_text || p.value || "",
+          suggested_text: p.suggested_text || p.suggestedText || p.value || "",
+          confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
+          entry_number: p.entry_number || p.entryNumber,
+          entryNumber: p.entryNumber || p.entry_number,
+          bbox,
+          bbox_array: bboxArray,
+          bbox_coords: bboxArray,
+          isValidSyntax: p.isValidSyntax ?? true,
+          modelVersion: p.modelVersion || p.model_version || "v2.0-active-learning",
+        };
+      });
   }
   if (typeof raw === "object") {
-    return Object.entries(raw).map(([key, val]: [string, any], idx) => {
-      if (typeof val === "object" && val !== null) {
-        const bbox = val.bbox || { x: 0.1, y: 0.12 + idx * 0.08, width: 0.76, height: 0.048 };
-        const bboxArray: [number, number, number, number] = [
-          Number(bbox.x.toFixed(4)),
-          Number(bbox.y.toFixed(4)),
-          Number((bbox.x + bbox.width).toFixed(4)),
-          Number((bbox.y + bbox.height).toFixed(4)),
-        ];
+    return Object.entries(raw)
+      .filter(([_, val]) => {
+        if (!val || typeof val !== "object") return false;
+        return (
+          (val.bbox && typeof val.bbox.x === "number") ||
+          (Array.isArray(val.bbox_array) && val.bbox_array.length === 4) ||
+          (Array.isArray(val.bbox_coords) && val.bbox_coords.length === 4)
+        );
+      })
+      .map(([key, val]: [string, any], idx) => {
+        const bbox = val.bbox || { x: 0, y: 0, width: 0, height: 0 };
+        const bboxArray: [number, number, number, number] =
+          Array.isArray(val.bbox_array) && val.bbox_array.length === 4
+            ? (val.bbox_array as [number, number, number, number])
+            : Array.isArray(val.bbox_coords) && val.bbox_coords.length === 4
+            ? (val.bbox_coords as [number, number, number, number])
+            : [
+                Number(bbox.x.toFixed(4)),
+                Number(bbox.y.toFixed(4)),
+                Number((bbox.x + bbox.width).toFixed(4)),
+                Number((bbox.y + bbox.height).toFixed(4)),
+              ];
         return {
           id: val.id || `pred-${key}-${idx}`,
           folioId: val.folioId || folioId,
@@ -88,76 +112,13 @@ function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
           isValidSyntax: val.isValidSyntax ?? true,
           modelVersion: val.modelVersion || "v2.0-active-learning",
         };
-      }
-      const bbox = { x: 0.1, y: 0.14 + idx * 0.075, width: 0.76, height: 0.048 };
-      const bboxArray: [number, number, number, number] = [
-        Number(bbox.x.toFixed(4)),
-        Number(bbox.y.toFixed(4)),
-        Number((bbox.x + bbox.width).toFixed(4)),
-        Number((bbox.y + bbox.height).toFixed(4)),
-      ];
-      return {
-        id: `pred-${key}-${idx}`,
-        folioId,
-        fieldKey: key,
-        field_key: key,
-        suggestedText: String(val || ""),
-        confidence: 0.88,
-        bbox,
-        bbox_array: bboxArray,
-        bbox_coords: bboxArray,
-        isValidSyntax: true,
-        modelVersion: "v2.0-active-learning",
-      };
-    });
+      });
   }
   return [];
 }
 
-function buildFallbackTemplatePredictions(fields: any[], folioId?: string): AIPrediction[] {
-  if (!Array.isArray(fields) || fields.length === 0) return [];
-  const total = Math.max(1, fields.length);
-  const stepY = Math.min(0.085, 0.72 / total);
-
-  return fields.map((field: any, idx: number) => {
-    const fieldKey = String(field.id || field.name || `field_${idx}`);
-    const fieldLabel = String(field.label || field.name || fieldKey);
-    const fieldType = String(field.type || "short_text").toLowerCase();
-    const x = 0.1;
-    const y = Number(Math.min(0.88, 0.14 + idx * stepY).toFixed(4));
-    const width = 0.76;
-    const height = fieldType === "long_text" ? 0.08 : 0.048;
-    const bbox = { x, y, width, height };
-    const bboxArray: [number, number, number, number] = [
-      x,
-      y,
-      Number((x + width).toFixed(4)),
-      Number((y + height).toFixed(4)),
-    ];
-    const suggestedText =
-      (fieldType === "dropdown" || fieldType === "select") &&
-      Array.isArray(field.options) &&
-      field.options.length > 0
-        ? String(field.options[0])
-        : "";
-    const confidence = suggestedText ? 0.82 : 0.76;
-
-    return {
-      id: `pred-${folioId ? String(folioId).slice(0, 8) : "doc"}-${idx}`,
-      folioId,
-      fieldKey,
-      field_key: fieldKey,
-      fieldLabel,
-      suggestedText,
-      suggested_text: suggestedText,
-      confidence,
-      bbox,
-      bbox_array: bboxArray,
-      bbox_coords: bboxArray,
-      isValidSyntax: true,
-      modelVersion: "v2.0-active-learning",
-    };
-  });
+function buildFallbackTemplatePredictions(_fields: any[], _folioId?: string): AIPrediction[] {
+  return [];
 }
 
 export default function VisorDual() {
@@ -571,10 +532,6 @@ export default function VisorDual() {
         console.warn("Notice analyzing AI on toggle:", err);
       }
 
-      if (resolvedPreds.length === 0 && template?.fields?.length > 0) {
-        resolvedPreds = buildFallbackTemplatePredictions(template.fields, folio.id);
-      }
-
       if (resolvedPreds.length > 0) {
         setAiPredictions(resolvedPreds);
         applyPredictionsToEmptyFields(template, resolvedPreds);
@@ -615,12 +572,8 @@ export default function VisorDual() {
                 preds = parseAIPredictions(aiData.ai_predictions, currentFolio.id);
               }
             } catch (err) {
-              console.warn("Fallback to template bounding boxes:", err);
+              console.warn("Notice analyzing AI for template folio:", err);
             }
-          }
-
-          if (preds.length === 0 && Array.isArray(data.fields) && data.fields.length > 0) {
-            preds = buildFallbackTemplatePredictions(data.fields, currentFolio.id);
           }
 
           setAiPredictions(preds);
@@ -662,12 +615,7 @@ export default function VisorDual() {
 
         if (nextFolio.template && Array.isArray(nextFolio.template.fields)) {
           setTemplate(nextFolio.template);
-          let preds = parsedPreds;
-          if (preds.length === 0 && nextFolio.template.fields.length > 0) {
-            preds = buildFallbackTemplatePredictions(nextFolio.template.fields, nextFolio.id);
-            setAiPredictions(preds);
-          }
-          initializeFormWithAI(nextFolio.template, preds, initialEntryMeta);
+          initializeFormWithAI(nextFolio.template, parsedPreds, initialEntryMeta);
         } else if (nextFolio.template_id) {
           await fetchTemplate(nextFolio.template_id, nextFolio, parsedPreds, initialEntryMeta);
         } else {
@@ -689,12 +637,7 @@ export default function VisorDual() {
             const { data: firstTpl } = await supabase.from("templates").select("*").limit(1).single();
             if (firstTpl) {
               setTemplate(firstTpl);
-              let preds = parsedPreds;
-              if (preds.length === 0 && Array.isArray(firstTpl.fields) && firstTpl.fields.length > 0) {
-                preds = buildFallbackTemplatePredictions(firstTpl.fields, nextFolio.id);
-                setAiPredictions(preds);
-              }
-              initializeFormWithAI(firstTpl, preds, initialEntryMeta);
+              initializeFormWithAI(firstTpl, parsedPreds, initialEntryMeta);
             }
           }
         }
@@ -740,12 +683,7 @@ export default function VisorDual() {
 
           if (specFolio.template && Array.isArray(specFolio.template.fields)) {
             setTemplate(specFolio.template);
-            let preds = parsedPreds;
-            if (preds.length === 0 && specFolio.template.fields.length > 0) {
-              preds = buildFallbackTemplatePredictions(specFolio.template.fields, specFolio.id);
-              setAiPredictions(preds);
-            }
-            initializeFormWithAI(specFolio.template, preds, initialEntryMeta);
+            initializeFormWithAI(specFolio.template, parsedPreds, initialEntryMeta);
           } else if (specFolio.template_id) {
             await fetchTemplate(specFolio.template_id, specFolio, parsedPreds, initialEntryMeta);
           } else {
@@ -766,12 +704,7 @@ export default function VisorDual() {
               const { data: firstTpl } = await supabase.from("templates").select("*").limit(1).single();
               if (firstTpl) {
                 setTemplate(firstTpl);
-                let preds = parsedPreds;
-                if (preds.length === 0 && Array.isArray(firstTpl.fields) && firstTpl.fields.length > 0) {
-                  preds = buildFallbackTemplatePredictions(firstTpl.fields, specFolio.id);
-                  setAiPredictions(preds);
-                }
-                initializeFormWithAI(firstTpl, preds, initialEntryMeta);
+                initializeFormWithAI(firstTpl, parsedPreds, initialEntryMeta);
               }
             }
           }
