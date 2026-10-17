@@ -1,10 +1,24 @@
 frontend/.env.local
 frontend/node_modules/
 frontend/.next/
-frontend/.env.local
 
 # Ignored files
 node_modules/
 .next/
 .env.local
 .env
+
+# Python & testing artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Export zip packages & temporary demo outputs
+*.zip
+*_FamilySearch_DIP.zip
+tmp/
+temp/
+tools/seeding/__pycache__/

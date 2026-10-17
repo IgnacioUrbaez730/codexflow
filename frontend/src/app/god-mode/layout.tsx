@@ -7,7 +7,7 @@ export default async function GodModeLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || '',

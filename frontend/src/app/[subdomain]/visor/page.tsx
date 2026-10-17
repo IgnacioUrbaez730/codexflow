@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
@@ -14,6 +14,8 @@ import {
   MapPin,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  BookOpen,
 } from "lucide-react";
 import { useImageViewerFilters } from "../../../hooks/useImageViewerFilters";
 import { MagnifierLens } from "../../../components/viewer/MagnifierLens";
@@ -78,10 +80,11 @@ function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
     return Object.entries(raw)
       .filter(([_, val]) => {
         if (!val || typeof val !== "object") return false;
+        const v = val as any;
         return (
-          (val.bbox && typeof val.bbox.x === "number") ||
-          (Array.isArray(val.bbox_array) && val.bbox_array.length === 4) ||
-          (Array.isArray(val.bbox_coords) && val.bbox_coords.length === 4)
+          (v.bbox && typeof v.bbox.x === "number") ||
+          (Array.isArray(v.bbox_array) && v.bbox_array.length === 4) ||
+          (Array.isArray(v.bbox_coords) && v.bbox_coords.length === 4)
         );
       })
       .map(([key, val]: [string, any], idx) => {
@@ -143,6 +146,71 @@ export default function VisorDual() {
   inheritedContextRef.current = inheritedContext;
   const isFetchingRef = useRef<boolean>(false);
   const [toastNotification, setToastNotification] = useState<string | null>(null);
+
+  // Archival Foliation & Ergonomic Alternation (SPEC-014 T03-FE-01/02/03)
+  const lastRecordedFoliationRef = useRef<{ number: number | null; side: string } | null>(null);
+  const suggestedNextFoliationRef = useRef<{ number: number | null; side: string } | null>(null);
+
+  const activeEntry = entries[activeEntryIndex];
+  const activeFolioNumber = activeEntry?.folio_number ?? null;
+  const activeFolioSide = activeEntry?.folio_side ?? "recto";
+  const activeActNumber = activeEntry?.act_number ?? "";
+  const isSinNumero = activeActNumber === "S/N";
+  const activeIsContinued = Boolean(activeEntry?.is_continued);
+
+  const updateActiveEntryFoliation = useCallback((updates: Partial<FolioEntry>) => {
+    setEntries((prev) => {
+      const next = [...prev];
+      if (next[activeEntryIndex]) {
+        next[activeEntryIndex] = {
+          ...next[activeEntryIndex],
+          ...updates,
+        };
+      }
+      return next;
+    });
+  }, [activeEntryIndex]);
+
+  const handleFolioNumberChange = useCallback((val: number | null) => {
+    updateActiveEntryFoliation({ folio_number: val });
+  }, [updateActiveEntryFoliation]);
+
+  const handleFolioSideChange = useCallback((side: "recto" | "vuelto" | "unica") => {
+    updateActiveEntryFoliation({ folio_side: side });
+  }, [updateActiveEntryFoliation]);
+
+  const handleActNumberChange = useCallback((val: string) => {
+    updateActiveEntryFoliation({ act_number: val });
+  }, [updateActiveEntryFoliation]);
+
+  const handleSinNumeroToggle = useCallback((checked: boolean) => {
+    updateActiveEntryFoliation({ act_number: checked ? "S/N" : "" });
+  }, [updateActiveEntryFoliation]);
+
+  const handleIsContinuedToggle = useCallback((checked: boolean) => {
+    updateActiveEntryFoliation({ is_continued: checked });
+  }, [updateActiveEntryFoliation]);
+
+  const foliationJumpWarning = useMemo(() => {
+    const prev = lastRecordedFoliationRef.current;
+    if (!prev || prev.number === null || prev.number === undefined) return null;
+    if (activeFolioNumber === null || activeFolioNumber === undefined) return null;
+    if (activeFolioNumber === prev.number && activeFolioSide === prev.side) return null;
+
+    let expectedNum = prev.number;
+    let expectedSide = "vuelto";
+    if (prev.side === "vuelto" || prev.side === "unica") {
+      expectedNum = prev.number + 1;
+      expectedSide = "recto";
+    }
+
+    if (activeFolioNumber !== expectedNum || activeFolioSide !== expectedSide) {
+      const prevStr = `F.${prev.number}${prev.side === "recto" ? "r" : prev.side === "vuelto" ? "v" : "u"}`;
+      const curStr = `F.${activeFolioNumber}${activeFolioSide === "recto" ? "r" : activeFolioSide === "vuelto" ? "v" : "u"}`;
+      return `Aviso: Salto de foliación detectado (anterior ${prevStr} -> actual ${curStr}). Página faltante o numeración irregular.`;
+    }
+    return null;
+  }, [activeFolioNumber, activeFolioSide]);
 
   // AI-Assisted Indexing States
   const [aiPredictions, setAiPredictions] = useState<AIPrediction[]>([]);
@@ -472,8 +540,17 @@ export default function VisorDual() {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData.session?.access_token;
         if (!token) {
+          const fallbackSuggested = suggestedNextFoliationRef.current || { number: 1, side: "recto" };
           return {
-            entries: [{ entry_number: 1, status: "pending", metadata: currentFolioMeta || {} }],
+            entries: [{
+              entry_number: 1,
+              folio_number: fallbackSuggested.number,
+              folio_side: fallbackSuggested.side,
+              act_number: "",
+              is_continued: false,
+              status: "pending",
+              metadata: currentFolioMeta || {}
+            }],
             inheritedContext: null,
           };
         }
@@ -485,12 +562,34 @@ export default function VisorDual() {
         });
         if (res.ok) {
           const resJson = await res.json();
-          const serverEntries: FolioEntry[] = resJson.entries || resJson.data?.entries || [];
+          let serverEntries: FolioEntry[] = resJson.entries || resJson.data?.entries || [];
           const inhCtx: InheritedContext =
             resJson.inherited_context || resJson.data?.inherited_context || null;
           setInheritedContext(inhCtx);
 
+          const lastFol = resJson.last_foliation || resJson.data?.last_foliation;
+          if (lastFol && lastFol.folio_number !== null && lastFol.folio_number !== undefined) {
+            lastRecordedFoliationRef.current = {
+              number: Number(lastFol.folio_number),
+              side: lastFol.folio_side || "recto",
+            };
+          }
+
+          // Suggest next continuous foliation if entries don't have one set yet
+          const suggested = suggestedNextFoliationRef.current || (lastFol && lastFol.folio_number !== null && lastFol.folio_number !== undefined ? (
+            lastFol.folio_side === "recto"
+              ? { number: Number(lastFol.folio_number), side: "vuelto" }
+              : { number: Number(lastFol.folio_number) + 1, side: "recto" }
+          ) : { number: currentFolioMeta?.sequence_order || 1, side: "recto" });
+
           if (serverEntries.length > 0) {
+            serverEntries = serverEntries.map((e) => ({
+              ...e,
+              folio_number: e.folio_number ?? suggested.number,
+              folio_side: e.folio_side ?? suggested.side,
+              act_number: e.act_number !== undefined && e.act_number !== null ? String(e.act_number) : (e.metadata?.numero_acta || e.metadata?.act_number || ""),
+              is_continued: Boolean(e.is_continued),
+            }));
             setEntries(serverEntries);
             setActiveEntryIndex(0);
             return { entries: serverEntries, inheritedContext: inhCtx };
@@ -499,8 +598,17 @@ export default function VisorDual() {
       } catch (err) {
         console.warn("Notice loading folio entries:", err);
       }
+      const fallbackSuggested = suggestedNextFoliationRef.current || { number: 1, side: "recto" };
       const defaultEntries: FolioEntry[] = [
-        { entry_number: 1, status: "pending", metadata: currentFolioMeta || {} },
+        {
+          entry_number: 1,
+          folio_number: fallbackSuggested.number,
+          folio_side: fallbackSuggested.side,
+          act_number: "",
+          is_continued: false,
+          status: "pending",
+          metadata: currentFolioMeta || {}
+        },
       ];
       setEntries(defaultEntries);
       setActiveEntryIndex(0);
@@ -735,7 +843,7 @@ export default function VisorDual() {
     }
   }, [folioIdParam]);
 
-  // Multi-Partida management handlers (T04-FE-01)
+  // Multi-Partida management handlers (T04-FE-01 & SPEC-014)
   const handleSwitchEntry = useCallback(
     (newIndex: number) => {
       if (newIndex === activeEntryIndex || newIndex < 0 || newIndex >= entries.length) return;
@@ -771,8 +879,13 @@ export default function VisorDual() {
         };
       }
       const newEntryNumber = updated.length + 1;
+      const currentEntry = updated[activeEntryIndex];
       const newEntry: FolioEntry = {
         entry_number: newEntryNumber,
+        folio_number: currentEntry?.folio_number ?? 1,
+        folio_side: currentEntry?.folio_side ?? "recto",
+        act_number: "",
+        is_continued: false,
         status: "pending",
         metadata: {},
       };
@@ -1019,6 +1132,19 @@ export default function VisorDual() {
         }
       }
     }
+
+    const currentEntry = entries[activeEntryIndex];
+    const curNum = currentEntry?.folio_number ?? 1;
+    const curSide = currentEntry?.folio_side ?? "recto";
+
+    // SPEC-014 T03-FE-02: Alternancia ergonómica de caras al guardar
+    const nextSuggested =
+      curSide === "recto"
+        ? { number: curNum, side: "vuelto" }
+        : { number: curNum + 1, side: "recto" };
+
+    suggestedNextFoliationRef.current = nextSuggested;
+    lastRecordedFoliationRef.current = { number: curNum, side: curSide };
 
     const updatedEntries = entries.map((entry, idx) => {
       if (idx === activeEntryIndex) {
@@ -1560,6 +1686,107 @@ export default function VisorDual() {
             <span className="text-xs font-medium text-gray-500 shrink-0">
               Partida {activeEntryIndex + 1} de {entries.length}
             </span>
+          </div>
+
+          {/* Archival Foliation Bar (SPEC-014 T03-FE-01 / T03-FE-03) */}
+          <div className="border-b bg-white px-4 py-3 space-y-2 border-slate-200 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+              {/* Folio Físico y Selector Bimembre Recto / Vuelto */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-700 whitespace-nowrap">Folio Físico:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={activeFolioNumber !== null && activeFolioNumber !== undefined ? activeFolioNumber : ""}
+                    onChange={(e) => handleFolioNumberChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    className="w-16 px-2 py-1 bg-white border border-slate-300 rounded text-slate-800 font-mono font-bold focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-xs"
+                    placeholder="14"
+                  />
+                </div>
+
+                {/* Selector bimembre interactivo */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => handleFolioSideChange("recto")}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-all select-none cursor-pointer ${
+                      activeFolioSide === "recto"
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Recto (Frente)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFolioSideChange("vuelto")}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-all select-none cursor-pointer ${
+                      activeFolioSide === "vuelto"
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Vuelto (Espalda)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFolioSideChange("unica")}
+                    className={`px-2 py-1 rounded text-xs font-semibold transition-all select-none cursor-pointer ${
+                      activeFolioSide === "unica"
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                    title="Página / Cara Única"
+                  >
+                    Única
+                  </button>
+                </div>
+              </div>
+
+              {/* Acta / Partida N° con Checkbox S/N */}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700 whitespace-nowrap">Acta / Partida N°:</span>
+                <input
+                  type="text"
+                  value={activeActNumber}
+                  disabled={isSinNumero}
+                  onChange={(e) => handleActNumberChange(e.target.value)}
+                  className={`w-20 px-2 py-1 border border-slate-300 rounded font-mono text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
+                    isSinNumero ? "bg-slate-100 text-slate-400 cursor-not-allowed italic" : "bg-white text-slate-800"
+                  }`}
+                  placeholder="Ej. 45"
+                />
+                <label className="flex items-center gap-1 text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isSinNumero}
+                    onChange={(e) => handleSinNumeroToggle(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                  />
+                  <span className="font-medium">S/N</span>
+                </label>
+              </div>
+
+              {/* Checkbox Continuación de folio anterior */}
+              <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={activeIsContinued}
+                  onChange={(e) => handleIsContinuedToggle(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                />
+                <span className="font-medium">Continuación de folio anterior</span>
+              </label>
+            </div>
+
+            {/* Alerta Visual no bloqueante por Saltos de Foliación (T03-FE-03) */}
+            {foliationJumpWarning && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="font-medium">{foliationJumpWarning}</span>
+              </div>
+            )}
           </div>
 
           {/* Form Content Area */}

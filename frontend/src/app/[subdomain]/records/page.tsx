@@ -50,6 +50,18 @@ interface TemplateField {
 
 interface RecordData {
   id: string;
+  folio_id?: string;
+  entry_number?: number;
+  folio_number?: number | null;
+  folio_side?: string | null;
+  act_number?: string | null;
+  principal_person?: string | null;
+  person_name?: string | null;
+  event_date?: string | null;
+  birth_date?: string | null;
+  record_type?: string | null;
+  tome_name?: string | null;
+  canonical_filename?: string;
   batch_id?: string;
   batch_name?: string;
   file_name?: string;
@@ -223,7 +235,10 @@ export default function RecordsPage() {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        setLoading(false);
+        return;
+      }
 
       const params = new URLSearchParams();
       if (selectedBatch) params.append("batch_id", selectedBatch);
@@ -231,6 +246,7 @@ export default function RecordsPage() {
       if (startDate) params.append("start_date", startDate);
       if (endDate) params.append("end_date", endDate);
       params.append("page", page.toString());
+      params.append("limit", pageSize.toString());
       params.append("page_size", pageSize.toString());
 
       const res = await fetch(`/api/v1/records?${params.toString()}`, {
@@ -245,17 +261,25 @@ export default function RecordsPage() {
 
       const resJson = await res.json();
       if (resJson.status === "success") {
-        setRecords(resJson.data || []);
-        setTotalRecords(resJson.total_records || 0);
-        setTotalPages(resJson.total_pages || 1);
+        const recordsList = Array.isArray(resJson.data) ? resJson.data : [];
+        setRecords(recordsList);
+        setTotalRecords(resJson.total_records ?? resJson.total ?? recordsList.length);
+        setTotalPages(resJson.total_pages ?? Math.max(1, Math.ceil((resJson.total_records ?? recordsList.length) / pageSize)));
         setTemplateFields(resJson.template_fields || null);
+      } else {
+        setRecords([]);
+        setTotalRecords(0);
+        setTotalPages(1);
       }
     } catch (err) {
       console.error("Error fetching records:", err);
+      setRecords([]);
+      setTotalRecords(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [selectedBatch, debouncedSearch, startDate, endDate, page, pageSize]);
+  }, [selectedBatch, debouncedSearch, startDate, endDate, page, pageSize, supabase]);
 
   useEffect(() => {
     fetchRecords();
@@ -744,18 +768,11 @@ export default function RecordsPage() {
           <table className="w-full text-left text-sm text-gray-700">
             <thead className="bg-gray-100 text-gray-600 font-semibold text-xs uppercase tracking-wider border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3">ID Folio</th>
-                <th className="px-4 py-3">Archivo</th>
-                {templateFields && templateFields.length > 0 ? (
-                  templateFields.slice(0, 4).map((f) => (
-                    <th key={f.id || f.key || f.name} className="px-4 py-3">
-                      {f.label || f.name || f.id}
-                    </th>
-                  ))
-                ) : (
-                  <th className="px-4 py-3">Lote</th>
-                )}
-                <th className="px-4 py-3">Fecha Verificación</th>
+                <th className="px-4 py-3">Acta / Partida</th>
+                <th className="px-4 py-3">Folio Físico</th>
+                <th className="px-4 py-3">Persona Principal</th>
+                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Tomo / Libro</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
@@ -763,14 +780,14 @@ export default function RecordsPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                     <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
                     <p>Cargando registros...</p>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                     <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                     <p className="font-medium text-gray-700">No se encontraron registros</p>
                     <p className="text-xs text-gray-400 mt-1">
@@ -780,83 +797,95 @@ export default function RecordsPage() {
                 </tr>
               ) : (
                 records.map((r) => {
+                  const isVerified = r.status === "verified";
                   const isCompleted = r.status === "completed";
+                  const folioNum = r.folio_number ?? "?";
+                  const folioSideChar = r.folio_side === "vuelto" ? "v" : "r";
+                  const principalPerson =
+                    r.principal_person ||
+                    r.person_name ||
+                    r.metadata?.nombre_bautizado ||
+                    r.metadata?.nombre_difunto ||
+                    r.metadata?.nombre_contrayente_1 ||
+                    r.metadata?.nombre ||
+                    "—";
+                  const recordDate =
+                    r.event_date ||
+                    r.birth_date ||
+                    (r.verified_at ? new Date(r.verified_at).toLocaleDateString() : (r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"));
+
                   return (
                     <tr key={r.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-600 font-medium">
-                        {r.id.slice(0, 8)}...
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-900 max-w-[200px] truncate" title={r.file_name || ""}>
-                        {r.file_name || "Sin archivo"}
+                      {/* ID / N° Acta */}
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                        {r.act_number ? (r.act_number === "S/N" ? "Acta S/N" : `Acta ${r.act_number}`) : `Partida #${r.entry_number || 1}`}
                       </td>
 
-                      {/* Dynamic Columns or Standard Batch */}
-                      {templateFields && templateFields.length > 0 ? (
-                        templateFields.slice(0, 4).map((f) => {
-                          const key = f.id || f.key || f.name || "";
-                          const val = r.metadata ? r.metadata[key] : "";
-                          return (
-                            <td key={key} className="px-4 py-3 text-gray-600 max-w-[150px] truncate">
-                              {val !== undefined && val !== null ? String(val) : "—"}
-                            </td>
-                          );
-                        })
-                      ) : (
-                        <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate">
-                          {r.batch_name || (r.batch_id ? r.batch_id.slice(0, 8) : "—")}
-                        </td>
-                      )}
-
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        {r.verified_at ? new Date(r.verified_at).toLocaleDateString() : "—"}
-                      </td>
+                      {/* Folio Físico con Cara */}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {isCompleted ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <CheckCircle2 className="w-3 h-3" />
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                          F.{folioNum}{folioSideChar}
+                        </span>
+                      </td>
+
+                      {/* Persona Principal */}
+                      <td className="px-4 py-3 text-gray-900 font-medium max-w-[200px] truncate" title={String(principalPerson)}>
+                        {principalPerson}
+                      </td>
+
+                      {/* Fecha del evento o sacramento */}
+                      <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                        {recordDate}
+                      </td>
+
+                      {/* Tomo / Libro */}
+                      <td className="px-4 py-3 text-gray-600 text-xs max-w-[160px] truncate" title={r.tome_name || r.batch_name || ""}>
+                        {r.tome_name || r.batch_name || "—"}
+                      </td>
+
+                      {/* Estado */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {isVerified ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Verificado
+                          </span>
+                        ) : isCompleted ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
                             Completado
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            <Clock className="w-3 h-3" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            <Clock className="w-3.5 h-3.5" />
                             En edición
                           </span>
                         )}
                       </td>
+
+                      {/* Acciones */}
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {r.status === "in_progress" && (
-                            <>
-                              <button
-                                onClick={() => router.push(`/${subdomain}/visor?folio_id=${r.id}`)}
-                                title="Continuar indexación en el Visor"
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-medium transition cursor-pointer"
-                              >
-                                <Play className="w-3.5 h-3.5 fill-current" />
-                                Continuar
-                              </button>
-                              <button
-                                onClick={() => handleReleaseFolio(r.id)}
-                                disabled={releasingId === r.id}
-                                title="Liberar folio y devolverlo a la cola"
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                {releasingId === r.id ? "Liberando..." : "Liberar"}
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={() => router.push(`/${subdomain}/visor?folio_id=${r.folio_id || r.id}`)}
+                            title="Abrir en Visor de Indexación"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            Visor
+                          </button>
                           <button
                             onClick={() => handleOpenDetail(r)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-medium transition cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-medium transition cursor-pointer"
+                            title="Ver o corregir metadatos"
                           >
                             <Eye className="w-3.5 h-3.5" />
-                            Ver / Editar
+                            Detalle
                           </button>
                           <button
                             onClick={() => setRecordToDelete(r)}
                             title="Eliminar registro"
-                            className="inline-flex items-center justify-center p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                            className="inline-flex items-center justify-center p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

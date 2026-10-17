@@ -2,6 +2,11 @@ export interface FolioEntry {
   id?: string;
   folio_id?: string;
   entry_number: number;
+  folio_number?: number | null;
+  folio_side?: "recto" | "vuelto" | "unica" | string | null;
+  act_number?: string | null;
+  is_continued?: boolean;
+  continued_from_entry_id?: string | null;
   status: "pending" | "completed" | "revision" | string;
   metadata: Record<string, any>;
   bounding_box?: {

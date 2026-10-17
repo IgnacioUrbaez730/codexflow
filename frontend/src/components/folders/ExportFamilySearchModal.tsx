@@ -245,9 +245,9 @@ export default function ExportFamilySearchModal({
                     <div className="text-lg font-bold text-slate-800">{summary?.total_folios}</div>
                     <div className="text-[11px] text-slate-500">Folios Físicos</div>
                   </div>
-                  <div className="p-2 bg-emerald-50 rounded-lg">
+                  <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
                     <div className="text-lg font-bold text-emerald-700">{summary?.completed_entries}</div>
-                    <div className="text-[11px] text-emerald-700">Partidas Listas</div>
+                    <div className="text-[11px] font-semibold text-emerald-800">Actas a Exportar</div>
                   </div>
                   <div className="p-2 bg-amber-50 rounded-lg">
                     <div className="text-lg font-bold text-amber-700">{summary?.revision_entries}</div>
@@ -255,8 +255,29 @@ export default function ExportFamilySearchModal({
                   </div>
                 </div>
 
+                {/* Zero completed entries warning (T03-FE-05) */}
+                {summary && summary.completed_entries === 0 && (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-2.5 text-xs text-rose-800">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold text-rose-900">No es posible exportar:</strong>{" "}
+                      El tomo no tiene ninguna partida completada aún. Completa e indexa al menos una partida antes de generar el paquete DIP.
+                    </div>
+                  </div>
+                )}
+
+                {/* Information on pending entries/folios excluded for DIP purity (T03-FE-05) */}
+                {summary && summary.completed_entries > 0 && ((summary.pending_entries || 0) > 0 || ((summary.total_folios || 0) > summary.completed_entries)) && (
+                  <div className="p-3 bg-blue-50/90 border border-blue-200 rounded-lg flex items-start space-x-2.5 text-xs text-blue-800">
+                    <Info className="w-4 h-4 shrink-0 text-blue-600 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold">Filtro Estricto de Calidad:</strong> Se incluirán {summary.completed_entries} actas completadas. Nota: Se excluirán {summary.pending_entries || Math.max(0, (summary.total_folios || 0) - summary.completed_entries)} folios/partidas pendientes para garantizar la pureza del paquete.
+                    </div>
+                  </div>
+                )}
+
                 {/* Warning if there are doubtful/revision records */}
-                {summary?.has_revisions && (
+                {summary && summary.has_revisions && summary.completed_entries > 0 && (
                   <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg flex items-start space-x-2.5 text-xs text-amber-800">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                     <div>
@@ -375,7 +396,7 @@ export default function ExportFamilySearchModal({
           <button
             type="button"
             onClick={handleDownloadPackage}
-            disabled={exporting || loadingSummary || (summary?.total_folios === 0)}
+            disabled={exporting || loadingSummary || !summary || summary.completed_entries === 0}
             className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none rounded-lg shadow-sm transition flex items-center space-x-2 cursor-pointer"
           >
             {exporting ? (

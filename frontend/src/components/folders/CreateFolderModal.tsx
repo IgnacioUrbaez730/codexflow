@@ -125,7 +125,7 @@ export default function CreateFolderModal({
       setDioceseName(parentMeta.diocese_name || "");
       setParishName(parentMeta.parish_name || "");
 
-      setIsGeoSectionOpen(defaultType === "root" || defaultType === "parish");
+      setIsGeoSectionOpen(defaultType === "root" || (defaultType as string) === "parish");
     }
     setErrorMsg(null);
   }, [folderToEdit, parentFolder, isOpen]);
