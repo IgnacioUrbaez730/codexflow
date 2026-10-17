@@ -1501,6 +1501,13 @@ export default function VisorDual() {
                 <div
                   className="relative flex items-center justify-center max-h-full max-w-full"
                   style={{
+                    width: "auto",
+                    height: "auto",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
                     transformOrigin: "center center",
                     transition: isDragging ? "none" : "transform 0.1s ease-out",
@@ -1513,9 +1520,11 @@ export default function VisorDual() {
                     draggable={false}
                     onLoad={(e) => {
                       const el = e.currentTarget;
+                      const w = el.naturalWidth || el.clientWidth || 1500;
+                      const h = el.naturalHeight || el.clientHeight || 2000;
                       setImgDimensions({
-                        width: el.naturalWidth || el.clientWidth || 800,
-                        height: el.naturalHeight || el.clientHeight || 1000,
+                        width: w,
+                        height: h,
                       });
                       setImageRect(el.getBoundingClientRect());
                     }}
@@ -1544,8 +1553,15 @@ export default function VisorDual() {
                         ? "grabbing"
                         : "grab",
                       filter: filterString,
+                      minWidth: imgDimensions.width ? undefined : "600px",
+                      minHeight: imgDimensions.height ? undefined : "800px",
+                      width: "auto",
+                      height: "auto",
+                      maxHeight: "88vh",
+                      maxWidth: "95%",
+                      objectFit: "contain",
                     }}
-                    className="max-h-full max-w-full object-contain rounded shadow-lg block"
+                    className="block select-none shadow-2xl bg-white rounded"
                   />
 
                   {/* AI Vector Bounding Boxes Overlay with multi-entry segmentation (T04-FE-05) */}
