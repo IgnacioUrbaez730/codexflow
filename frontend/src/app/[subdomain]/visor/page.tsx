@@ -178,6 +178,9 @@ export default function VisorDual() {
   ]);
   const [activeEntryIndex, setActiveEntryIndex] = useState<number>(0);
   const [inheritedContext, setInheritedContext] = useState<InheritedContext | null>(null);
+  const inheritedContextRef = useRef<InheritedContext | null>(null);
+  inheritedContextRef.current = inheritedContext;
+  const isFetchingRef = useRef<boolean>(false);
   const [toastNotification, setToastNotification] = useState<string | null>(null);
 
   // AI-Assisted Indexing States
@@ -305,46 +308,47 @@ export default function VisorDual() {
 
   // Context inheritance detection for fields
   const getInheritedFieldInfo = useCallback(
-    (field: any) => {
-      if (!inheritedContext) return null;
+    (field: any, ctx?: InheritedContext | null) => {
+      const activeCtx = ctx !== undefined ? ctx : inheritedContextRef.current;
+      if (!activeCtx) return null;
       const key = String(field.id || field.name || "").toLowerCase().trim();
 
       if (key.includes("parroquia") || key === "parish") {
-        if (inheritedContext.parish_name) {
+        if (activeCtx.parish_name) {
           return {
-            value: inheritedContext.parish_name,
+            value: activeCtx.parish_name,
             reason: "Campo heredado del tomo (Parroquia)",
           };
         }
       }
       if (key.includes("diocesis") || key.includes("diócesis") || key === "diocese") {
-        if (inheritedContext.diocese_name) {
+        if (activeCtx.diocese_name) {
           return {
-            value: inheritedContext.diocese_name,
+            value: activeCtx.diocese_name,
             reason: "Campo heredado del tomo (Diócesis)",
           };
         }
       }
       if (key.includes("tomo") || key.includes("libro") || key === "tome") {
-        if (inheritedContext.tome_number) {
+        if (activeCtx.tome_number) {
           return {
-            value: String(inheritedContext.tome_number),
+            value: String(activeCtx.tome_number),
             reason: "Campo heredado del tomo (Número de Tomo)",
           };
         }
       }
       if (key.includes("inicio") || key === "year_start" || key === "start_year") {
-        if (inheritedContext.year_start) {
+        if (activeCtx.year_start) {
           return {
-            value: String(inheritedContext.year_start),
+            value: String(activeCtx.year_start),
             reason: "Campo heredado del tomo (Año de inicio)",
           };
         }
       }
       if (key.includes("fin") || key === "year_end" || key === "end_year") {
-        if (inheritedContext.year_end) {
+        if (activeCtx.year_end) {
           return {
-            value: String(inheritedContext.year_end),
+            value: String(activeCtx.year_end),
             reason: "Campo heredado del tomo (Año de fin)",
           };
         }
@@ -359,17 +363,17 @@ export default function VisorDual() {
         key.includes("lugar_bautismo") ||
         key.includes("lugar_evento")
       ) {
-        if (inheritedContext.canonical_place) {
+        if (activeCtx.canonical_place) {
           return {
-            value: inheritedContext.canonical_place,
+            value: activeCtx.canonical_place,
             reason: "Campo heredado del tomo/jurisdicción (Lugar canónico)",
           };
         }
       }
       if (key === "pais" || key === "country" || key === "nacion" || key === "nación") {
-        if (inheritedContext.country) {
+        if (activeCtx.country) {
           return {
-            value: inheritedContext.country,
+            value: activeCtx.country,
             reason: "Campo heredado del tomo/jurisdicción (País)",
           };
         }
@@ -380,17 +384,17 @@ export default function VisorDual() {
         key === "provincia" ||
         key === "departamento"
       ) {
-        if (inheritedContext.state) {
+        if (activeCtx.state) {
           return {
-            value: inheritedContext.state,
+            value: activeCtx.state,
             reason: "Campo heredado del tomo/jurisdicción (Estado / Provincia)",
           };
         }
       }
       if (key === "municipio" || key === "municipality" || key === "canton" || key === "cantón") {
-        if (inheritedContext.municipality) {
+        if (activeCtx.municipality) {
           return {
-            value: inheritedContext.municipality,
+            value: activeCtx.municipality,
             reason: "Campo heredado del tomo/jurisdicción (Municipio)",
           };
         }
@@ -402,16 +406,16 @@ export default function VisorDual() {
         key === "pueblo" ||
         key === "city_or_locality"
       ) {
-        if (inheritedContext.city_or_locality) {
+        if (activeCtx.city_or_locality) {
           return {
-            value: inheritedContext.city_or_locality,
+            value: activeCtx.city_or_locality,
             reason: "Campo heredado del tomo/jurisdicción (Ciudad / Localidad)",
           };
         }
       }
       return null;
     },
-    [inheritedContext]
+    []
   );
 
   // Initialize form with intelligent prefilling (Confidence >= 80% and valid format)
@@ -628,6 +632,8 @@ export default function VisorDual() {
   );
 
   const fetchNextFolio = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -698,12 +704,16 @@ export default function VisorDual() {
     } catch (e) {
       console.error(e);
       setFolio(null);
+    } finally {
+      isFetchingRef.current = false;
+      setLoading(false);
     }
-    setLoading(false);
   }, [supabase, fetchTemplate, initializeFormWithAI, loadFolioEntriesAndContext]);
 
   const fetchSpecificFolio = useCallback(
     async (id: string) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
       setLoading(true);
       try {
         const { data: sessionData } = await supabase.auth.getSession();
@@ -771,19 +781,26 @@ export default function VisorDual() {
       } catch (e) {
         console.error(e);
         setFolio(null);
+      } finally {
+        isFetchingRef.current = false;
+        setLoading(false);
       }
-      setLoading(false);
     },
     [supabase, fetchTemplate, initializeFormWithAI, loadFolioEntriesAndContext]
   );
 
+  const fetchNextFolioRef = useRef(fetchNextFolio);
+  fetchNextFolioRef.current = fetchNextFolio;
+  const fetchSpecificFolioRef = useRef(fetchSpecificFolio);
+  fetchSpecificFolioRef.current = fetchSpecificFolio;
+
   useEffect(() => {
     if (folioIdParam) {
-      fetchSpecificFolio(folioIdParam);
+      fetchSpecificFolioRef.current(folioIdParam);
     } else {
-      fetchNextFolio();
+      fetchNextFolioRef.current();
     }
-  }, [folioIdParam, fetchNextFolio, fetchSpecificFolio]);
+  }, [folioIdParam]);
 
   // Multi-Partida management handlers (T04-FE-01)
   const handleSwitchEntry = useCallback(
