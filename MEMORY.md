@@ -50,10 +50,23 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Explorador `/records` Optimizado:** Paginación SQL con `range()` en backend y eliminación del spinner infinito en frontend, listando registros con su foliación `F.14r` en menos de 150ms.
 - **Tooling Aislado:** Script independiente en `tools/seeding/seed_demo_data.py` fuera de los paquetes de despliegue de Vercel/Render, con opción `--clean` y enfocado en la cuenta de demostración (`belkisagreda1@gmail.com`).
 
+## Módulo 15 COMPLETADO: Corpus Paleográfico Realista, Variantes de Estrés Archivístico y Dataset de Entrenamiento
+
+- **Corpus Paleográfico Realista (60 Folios):** Generación declarativa y reproducible de 60 folios divididos exactamente en 20 Bautismos, 20 Matrimonios y 20 Defunciones (`tools/seeding/corpus_manifest.json`), alojados en 3 tomos canónicos en la organización `codexflow-folios`.
+- **Casuística Exhaustiva de Estrés Archivístico:**
+  - Aperturas de doble página (`spread` / 2 páginas por toma).
+  - Partidas continuadas interfolio con enlaces `is_continued = true` y `continued_from_entry_id`.
+  - Folios con degradación visual (tinta ferrogálica desvaída, humedad) para puesta a prueba de la Lupa Interactiva (`L`) y filtros.
+  - Folios con texto mutilado o dudoso para demostrar los atajos `Ctrl + U` (`<Ilegible>`) y el botón *"Marcar Dudoso"*.
+  - Folios en blanco y notas de apertura para practicar `Ctrl + B` (`<En Blanco>`).
+  - Notas marginales densas de matrimonios posteriores y legitimaciones.
+- **Balance Operativo 50/50:** 34 partidas completadas con esquemas canónicos completos de FamilySearch (listas para exportación DIP, matrices Excel/CSV y GEDCOM) y 30 folios pendientes en blanco para demostración y transcripción en vivo.
+- **Pipeline de Imágenes Paleográficas y Storage:** Script `tools/seeding/upload_corpus_to_r2.py` con soporte dual para Cloudflare R2 y fallback vectorial de alta fidelidad, asegurando renderizado al 100% en el Visor Dual.
+- **Seeding Idempotente:** Script orquestador `tools/seeding/seed_realistic_corpus.py` con opción `--clean` y aislamiento multi-tenant estricto.
+
 ## Próximos pasos (Pendientes)
-- **SPEC-015: Rol de Evaluador y Mesa de Arbitraje de Calidad (`/evaluacion`).**
-- **Generación de Dataset Demo de Alta Fidelidad:** Ejecutar el seed para aprovisionar 10 folios de prueba en la cuenta de Belkis Agreda.
-- **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores.
+- **SPEC-016: Rol de Evaluador y Mesa de Arbitraje de Calidad (`/evaluacion`).**
+- **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores sin desvíos de URL.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 
