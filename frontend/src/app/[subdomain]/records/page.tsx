@@ -50,8 +50,10 @@ interface TemplateField {
 
 interface RecordData {
   id: string;
+  entry_id?: string | null;
   folio_id?: string;
   entry_number?: number;
+  total_entries_in_folio?: number;
   folio_number?: number | null;
   folio_side?: string | null;
   act_number?: string | null;
@@ -61,7 +63,13 @@ interface RecordData {
   birth_date?: string | null;
   record_type?: string | null;
   tome_name?: string | null;
+  folder_id?: string | null;
+  series?: string | null;
+  is_continued?: boolean;
+  continued_from_entry_id?: string | null;
+  is_blank?: boolean;
   canonical_filename?: string;
+  original_filename?: string;
   batch_id?: string;
   batch_name?: string;
   file_name?: string;
@@ -74,6 +82,47 @@ interface RecordData {
   view_url?: string;
 }
 
+interface StatusCounts {
+  total: number;
+  completed: number;
+  verified: number;
+  pending: number;
+  revision: number;
+  in_progress: number;
+}
+
+function inferFolderSeries(
+  folder: DocumentFolder,
+  parentSeries?: string
+): string {
+  const metaSeries = (
+    folder.metadata?.sacrament_type ||
+    folder.metadata?.series ||
+    parentSeries ||
+    ""
+  )
+    .toString()
+    .toLowerCase();
+  const nameLower = (folder.name || "").toLowerCase();
+  const combined = `${metaSeries} ${nameLower}`;
+
+  if (combined.includes("bautis") || combined.includes("bau")) return "bautismo";
+  if (combined.includes("matrim") || combined.includes("mat")) return "matrimonio";
+  if (combined.includes("defunc") || combined.includes("def") || combined.includes("entierro"))
+    return "defuncion";
+  return metaSeries || "";
+}
+
+function formatHistoricalDate(dateStr?: string | null): string {
+  if (!dateStr || dateStr === "—") return "—";
+  const trimmed = dateStr.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (isoMatch) {
+    return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  }
+  return trimmed;
+}
+
 export default function RecordsPage() {
   const { subdomain } = useParams() as { subdomain: string };
   const router = useRouter();
@@ -83,9 +132,20 @@ export default function RecordsPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
   );
 
-  // Filter States
+  // Hierarchical & Multi-status Filter States
   const [batches, setBatches] = useState<BatchOption[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>("");
+  const [selectedSeries, setSelectedSeries] = useState<string>("");
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [counts, setCounts] = useState<StatusCounts>({
+    total: 0,
+    completed: 0,
+    verified: 0,
+    pending: 0,
+    revision: 0,
+    in_progress: 0,
+  });
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
@@ -112,6 +172,8 @@ export default function RecordsPage() {
   // Modal & Viewer States
   const [selectedRecord, setSelectedRecord] = useState<RecordData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [loadingModalImage, setLoadingModalImage] = useState<boolean>(false);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -155,7 +217,7 @@ export default function RecordsPage() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Load initial session & batches
+  // Load initial session, batches & folders tree
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -197,7 +259,7 @@ export default function RecordsPage() {
         console.error("Error fetching batches:", err);
       }
 
-      // Fetch tomes for FamilySearch export
+      // Fetch tomes for cascading filter & FamilySearch export
       try {
         const treeRes = await fetch("/api/v1/folders/tree", {
           headers: { Authorization: `Bearer ${session.access_token}` },
@@ -206,13 +268,24 @@ export default function RecordsPage() {
           const treeJson = await treeRes.json();
           const treeData: DocumentFolder[] = treeJson.data || [];
           const tomes: DocumentFolder[] = [];
-          const traverse = (nodes: DocumentFolder[]) => {
+          const traverse = (nodes: DocumentFolder[], inheritedSeries?: string) => {
             for (const n of nodes) {
+              const currentSeries =
+                n.folder_type === "series"
+                  ? inferFolderSeries(n, inheritedSeries)
+                  : inheritedSeries;
               if (n.folder_type === "tome" && !n.metadata?.is_virtual_unclassified) {
-                tomes.push(n);
+                const resolvedSeries = inferFolderSeries(n, currentSeries);
+                tomes.push({
+                  ...n,
+                  metadata: {
+                    ...(n.metadata || {}),
+                    series: n.metadata?.series || resolvedSeries,
+                  },
+                });
               }
               if (n.children && n.children.length > 0) {
-                traverse(n.children);
+                traverse(n.children, currentSeries);
               }
             }
           };
@@ -230,6 +303,17 @@ export default function RecordsPage() {
     init();
   }, [subdomain, router]);
 
+  // Filter tomes dynamically based on selectedSeries
+  const filteredTomes = React.useMemo(() => {
+    if (!selectedSeries || selectedSeries === "unclassified") {
+      return selectedSeries === "unclassified" ? [] : availableTomes;
+    }
+    return availableTomes.filter((tome) => {
+      const series = inferFolderSeries(tome);
+      return series === selectedSeries;
+    });
+  }, [availableTomes, selectedSeries]);
+
   // Fetch records
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -241,6 +325,9 @@ export default function RecordsPage() {
       }
 
       const params = new URLSearchParams();
+      if (selectedSeries) params.append("series", selectedSeries);
+      if (selectedFolderId) params.append("folder_id", selectedFolderId);
+      if (selectedStatus) params.append("status", selectedStatus);
       if (selectedBatch) params.append("batch_id", selectedBatch);
       if (debouncedSearch) params.append("search", debouncedSearch);
       if (startDate) params.append("start_date", startDate);
@@ -264,8 +351,21 @@ export default function RecordsPage() {
         const recordsList = Array.isArray(resJson.data) ? resJson.data : [];
         setRecords(recordsList);
         setTotalRecords(resJson.total_records ?? resJson.total ?? recordsList.length);
-        setTotalPages(resJson.total_pages ?? Math.max(1, Math.ceil((resJson.total_records ?? recordsList.length) / pageSize)));
+        setTotalPages(
+          resJson.total_pages ??
+            Math.max(1, Math.ceil((resJson.total_records ?? recordsList.length) / pageSize))
+        );
         setTemplateFields(resJson.template_fields || null);
+        if (resJson.counts) {
+          setCounts({
+            total: resJson.counts.total ?? 0,
+            completed: resJson.counts.completed ?? 0,
+            verified: resJson.counts.verified ?? 0,
+            pending: resJson.counts.pending ?? 0,
+            revision: resJson.counts.revision ?? 0,
+            in_progress: resJson.counts.in_progress ?? 0,
+          });
+        }
       } else {
         setRecords([]);
         setTotalRecords(0);
@@ -279,7 +379,18 @@ export default function RecordsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedBatch, debouncedSearch, startDate, endDate, page, pageSize, supabase]);
+  }, [
+    selectedSeries,
+    selectedFolderId,
+    selectedStatus,
+    selectedBatch,
+    debouncedSearch,
+    startDate,
+    endDate,
+    page,
+    pageSize,
+    supabase,
+  ]);
 
   useEffect(() => {
     fetchRecords();
@@ -311,6 +422,9 @@ export default function RecordsPage() {
 
       const params = new URLSearchParams();
       params.append("format", format);
+      if (selectedSeries) params.append("series", selectedSeries);
+      if (selectedFolderId) params.append("folder_id", selectedFolderId);
+      if (selectedStatus && selectedStatus !== "all") params.append("status", selectedStatus);
       if (selectedBatch) params.append("batch_id", selectedBatch);
       if (debouncedSearch) params.append("search", debouncedSearch);
       if (startDate) params.append("start_date", startDate);
@@ -344,9 +458,8 @@ export default function RecordsPage() {
     }
   };
 
-
-  // Open Edit / View Modal
-  const handleOpenDetail = (record: RecordData) => {
+  // Open Edit / View Modal with on-demand R2 view_url loading
+  const handleOpenDetail = async (record: RecordData) => {
     setSelectedRecord(record);
     setFormData(record.metadata ? { ...record.metadata } : {});
     setSaveStatus(null);
@@ -355,13 +468,103 @@ export default function RecordsPage() {
     setPan({ x: 0, y: 0 });
     setMagnifier((m) => ({ ...m, active: false, visible: false }));
     setIsModalOpen(true);
+
+    if (!record.view_url) {
+      const targetFolioId = record.folio_id || record.id;
+      if (targetFolioId) {
+        setLoadingModalImage(true);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token || authToken;
+          if (token) {
+            const res = await fetch(`/api/v1/folios/${targetFolioId}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            if (res.ok) {
+              const folioJson = await res.json();
+              const signedUrl = folioJson.view_url || folioJson.data?.view_url;
+              const fetchedFields = folioJson.template?.fields || folioJson.data?.template?.fields;
+              if (signedUrl) {
+                setSelectedRecord((prev) =>
+                  prev && (prev.id === record.id || prev.folio_id === targetFolioId)
+                    ? { ...prev, view_url: signedUrl }
+                    : prev
+                );
+              }
+              if (Array.isArray(fetchedFields) && fetchedFields.length > 0 && (!templateFields || templateFields.length === 0)) {
+                setTemplateFields(fetchedFields);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error cargando view_url bajo demanda:", err);
+        } finally {
+          setLoadingModalImage(false);
+        }
+      }
+    }
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedRecord(null);
     setSaveStatus(null);
+    setLoadingModalImage(false);
     setMagnifier((m) => ({ ...m, active: false, visible: false }));
+  };
+
+  // Quality Arbitration status update handler
+  const handleArbitrateStatus = async (newStatus: "verified" | "revision" | "pending") => {
+    if (!selectedRecord) return;
+    setUpdatingStatus(newStatus);
+    setSaveStatus(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sesión no válida");
+
+      const targetId = selectedRecord.entry_id || selectedRecord.id;
+      const res = await fetch(`/api/v1/records/${targetId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          folio_id: selectedRecord.folio_id || selectedRecord.id,
+          metadata: formData,
+        }),
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.detail || "Error al cambiar el estado del registro");
+      }
+
+      const statusLabels: Record<string, string> = {
+        verified: "Acta verificada con éxito",
+        revision: "Acta marcada como Dudosa / En Revisión",
+        pending: "Acta devuelta a estado Pendiente",
+      };
+
+      setSelectedRecord((prev) => (prev ? { ...prev, status: newStatus } : prev));
+      setSaveStatus({
+        type: "success",
+        message: statusLabels[newStatus] || "Estado actualizado correctamente.",
+      });
+
+      await fetchRecords();
+    } catch (err: any) {
+      setSaveStatus({
+        type: "error",
+        message: err.message || "No se pudo actualizar el estado del registro.",
+      });
+    } finally {
+      setUpdatingStatus(null);
+    }
   };
 
   const handleReleaseFolio = async (folioId: string) => {
@@ -383,7 +586,7 @@ export default function RecordsPage() {
       if (!res.ok) {
         throw new Error(resData.detail || "Error al liberar el folio");
       }
-      if (selectedRecord && selectedRecord.id === folioId) {
+      if (selectedRecord && (selectedRecord.id === folioId || selectedRecord.folio_id === folioId)) {
         handleCloseModal();
       }
       await fetchRecords();
@@ -484,13 +687,17 @@ export default function RecordsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sesión no válida");
 
-      const res = await fetch(`/api/v1/records/${selectedRecord.id}`, {
+      const targetId = selectedRecord.entry_id || selectedRecord.id;
+      const res = await fetch(`/api/v1/records/${targetId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ metadata: formData }),
+        body: JSON.stringify({
+          metadata: formData,
+          folio_id: selectedRecord.folio_id || selectedRecord.id,
+        }),
       });
 
       const resData = await res.json();
@@ -581,6 +788,9 @@ export default function RecordsPage() {
   };
 
   const editableFields = getEditableFields();
+  const canArbitrate =
+    !userRole || ["admin", "archivist", "evaluator", "superadmin"].includes(userRole);
+  const canDelete = !userRole || ["admin", "superadmin"].includes(userRole);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -589,7 +799,7 @@ export default function RecordsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Explorador de Registros</h1>
           <p className="text-sm text-gray-500">
-            Consulta, filtra y edita folios digitalizados y verificados.
+            Consola archivística integral: navega por serie y tomo, supervisa estados y verifica partidas.
           </p>
         </div>
         <div className="relative" ref={exportMenuRef}>
@@ -668,41 +878,221 @@ export default function RecordsPage() {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Interactive Status Counter Bar (5 Cards) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {/* 1. Todos */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatus("all");
+            setPage(1);
+          }}
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition cursor-pointer ${
+            selectedStatus === "all"
+              ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+              : "bg-white text-gray-800 border-gray-200 hover:border-slate-400 hover:bg-slate-50"
+          }`}
+        >
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${selectedStatus === "all" ? "text-slate-300" : "text-gray-500"}`}>
+              Todos
+            </p>
+            <p className="text-xl font-bold mt-0.5">{counts.total}</p>
+          </div>
+          <div className={`p-2 rounded-lg ${selectedStatus === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"}`}>
+            <FileText className="w-5 h-5" />
+          </div>
+        </button>
+
+        {/* 2. Completados */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatus("completed");
+            setPage(1);
+          }}
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition cursor-pointer ${
+            selectedStatus === "completed"
+              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+              : "bg-white text-gray-800 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/40"
+          }`}
+        >
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${selectedStatus === "completed" ? "text-emerald-100" : "text-emerald-700"}`}>
+              Completados
+            </p>
+            <p className="text-xl font-bold mt-0.5">{counts.completed}</p>
+          </div>
+          <div className={`p-2 rounded-lg ${selectedStatus === "completed" ? "bg-emerald-700 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </button>
+
+        {/* 3. Verificados */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatus("verified");
+            setPage(1);
+          }}
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition cursor-pointer ${
+            selectedStatus === "verified"
+              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+              : "bg-white text-gray-800 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40"
+          }`}
+        >
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${selectedStatus === "verified" ? "text-indigo-100" : "text-indigo-700"}`}>
+              Verificados
+            </p>
+            <p className="text-xl font-bold mt-0.5">{counts.verified}</p>
+          </div>
+          <div className={`p-2 rounded-lg ${selectedStatus === "verified" ? "bg-indigo-700 text-white" : "bg-indigo-100 text-indigo-700"}`}>
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+        </button>
+
+        {/* 4. Pendientes */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatus("pending");
+            setPage(1);
+          }}
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition cursor-pointer ${
+            selectedStatus === "pending"
+              ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+              : "bg-white text-gray-800 border-gray-200 hover:border-amber-400 hover:bg-amber-50/40"
+          }`}
+        >
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${selectedStatus === "pending" ? "text-amber-100" : "text-amber-700"}`}>
+              Pendientes
+            </p>
+            <p className="text-xl font-bold mt-0.5">{counts.pending}</p>
+          </div>
+          <div className={`p-2 rounded-lg ${selectedStatus === "pending" ? "bg-amber-600 text-white" : "bg-amber-100 text-amber-700"}`}>
+            <Clock className="w-5 h-5" />
+          </div>
+        </button>
+
+        {/* 5. Dudosos / Revisión */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedStatus("revision");
+            setPage(1);
+          }}
+          className={`col-span-2 sm:col-span-1 flex items-center justify-between p-3.5 rounded-xl border text-left transition cursor-pointer ${
+            selectedStatus === "revision"
+              ? "bg-orange-600 text-white border-orange-600 shadow-sm"
+              : "bg-white text-gray-800 border-gray-200 hover:border-orange-400 hover:bg-orange-50/40"
+          }`}
+        >
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${selectedStatus === "revision" ? "text-orange-100" : "text-orange-700"}`}>
+              Dudosos / Revisión
+            </p>
+            <p className="text-xl font-bold mt-0.5">{counts.revision}</p>
+          </div>
+          <div className={`p-2 rounded-lg ${selectedStatus === "revision" ? "bg-orange-700 text-white" : "bg-orange-100 text-orange-700"}`}>
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+        </button>
+      </div>
+
+      {/* Cascading Filters Bar (6 Controls) */}
       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Batch Selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+          {/* 1. Serie / Carpeta */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
-              Lote
+              Serie / Carpeta
             </label>
             <select
-              value={selectedBatch}
+              value={selectedSeries}
               onChange={(e) => {
-                setSelectedBatch(e.target.value);
+                const val = e.target.value;
+                setSelectedSeries(val);
+                if (val === "unclassified") {
+                  setSelectedFolderId("unclassified");
+                } else {
+                  setSelectedFolderId("");
+                }
                 setPage(1);
               }}
               className="w-full text-sm border border-gray-300 rounded-lg p-2.5 bg-white text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             >
-              <option value="">Todos los lotes</option>
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.templates?.name ? `${b.templates.name} (${b.id.slice(0, 8)})` : `Lote ${b.id.slice(0, 8)}`}
-                </option>
-              ))}
+              <option value="">Todas las series</option>
+              <option value="bautismo">Bautismos</option>
+              <option value="matrimonio">Matrimonios</option>
+              <option value="defuncion">Defunciones</option>
+              <option value="unclassified">Sin Clasificar (Folios sueltos)</option>
             </select>
           </div>
 
-          {/* Search Input */}
+          {/* 2. Tomo / Libro */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
-              Búsqueda
+              Tomo / Libro
+            </label>
+            <select
+              value={selectedFolderId}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedFolderId(val);
+                setPage(1);
+                if (val && val !== "unclassified") {
+                  const foundTome = availableTomes.find((t) => t.id === val);
+                  if (foundTome) {
+                    setSelectedTomeForExport(foundTome);
+                  }
+                }
+              }}
+              className="w-full text-sm border border-gray-300 rounded-lg p-2.5 bg-white text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            >
+              <option value="">Todos los tomos</option>
+              {filteredTomes.map((tome) => (
+                <option key={tome.id} value={tome.id}>
+                  {tome.name}
+                </option>
+              ))}
+              <option value="unclassified">Sin Clasificar</option>
+            </select>
+          </div>
+
+          {/* 3. Estado */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
+              Estado
+            </label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => {
+                setSelectedStatus(e.target.value);
+                setPage(1);
+              }}
+              className="w-full text-sm border border-gray-300 rounded-lg p-2.5 bg-white text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="completed">Completado</option>
+              <option value="verified">Verificado</option>
+              <option value="pending">Pendiente</option>
+              <option value="revision">Dudoso / En Revisión</option>
+              <option value="in_progress">En Progreso</option>
+            </select>
+          </div>
+
+          {/* 4. Búsqueda Integral */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
+              Búsqueda Integral
             </label>
             <div className="relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="Buscar por nombre, texto..."
+                placeholder="Persona, padres, acta, F.14r, archivo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full text-sm border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
@@ -710,10 +1100,10 @@ export default function RecordsPage() {
             </div>
           </div>
 
-          {/* Date Range: From */}
+          {/* 5. Date Range: From */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
-              Desde (Verificación)
+              DESDE (FECHA ACTA)
             </label>
             <input
               type="date"
@@ -726,10 +1116,10 @@ export default function RecordsPage() {
             />
           </div>
 
-          {/* Date Range: To */}
+          {/* 6. Date Range: To */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">
-              Hasta (Verificación)
+              HASTA (FECHA ACTA)
             </label>
             <input
               type="date"
@@ -744,10 +1134,13 @@ export default function RecordsPage() {
         </div>
 
         {/* Clear Filters Helper */}
-        {(selectedBatch || searchTerm || startDate || endDate) && (
+        {(selectedSeries || selectedFolderId || selectedStatus !== "all" || selectedBatch || searchTerm || startDate || endDate) && (
           <div className="flex justify-end pt-2 border-t border-gray-100">
             <button
               onClick={() => {
+                setSelectedSeries("");
+                setSelectedFolderId("");
+                setSelectedStatus("all");
                 setSelectedBatch("");
                 setSearchTerm("");
                 setStartDate("");
@@ -771,7 +1164,7 @@ export default function RecordsPage() {
                 <th className="px-4 py-3">Acta / Partida</th>
                 <th className="px-4 py-3">Folio Físico</th>
                 <th className="px-4 py-3">Persona Principal</th>
-                <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Fecha Acta</th>
                 <th className="px-4 py-3">Tomo / Libro</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
@@ -791,104 +1184,235 @@ export default function RecordsPage() {
                     <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                     <p className="font-medium text-gray-700">No se encontraron registros</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Intenta ajustar los filtros de búsqueda o seleccionar otro lote.
+                      Intenta ajustar la serie, el tomo, el estado o los términos de búsqueda.
                     </p>
                   </td>
                 </tr>
               ) : (
-                records.map((r) => {
-                  const isVerified = r.status === "verified";
-                  const isCompleted = r.status === "completed";
-                  const folioNum = r.folio_number ?? "?";
-                  const folioSideChar = r.folio_side === "vuelto" ? "v" : "r";
-                  const principalPerson =
-                    r.principal_person ||
-                    r.person_name ||
-                    r.metadata?.nombre_bautizado ||
-                    r.metadata?.nombre_difunto ||
-                    r.metadata?.nombre_contrayente_1 ||
-                    r.metadata?.nombre ||
-                    "—";
-                  const recordDate =
-                    r.event_date ||
-                    r.birth_date ||
-                    (r.verified_at ? new Date(r.verified_at).toLocaleDateString() : (r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"));
+                records.map((rec) => {
+                  const folioNum = rec.folio_number || 1;
+                  const folioSideChar =
+                    rec.folio_side === "vuelto"
+                      ? "v"
+                      : rec.folio_side === "unica"
+                      ? "u"
+                      : "r";
+                  const totalEntries = rec.total_entries_in_folio || 1;
+                  const entryNum = rec.entry_number || 1;
+                  const isBlank = Boolean(rec.is_blank || rec.metadata?.is_blank);
+                  const rawPerson =
+                    rec.principal_person ||
+                    rec.person_name ||
+                    rec.metadata?.nombre_bautizado ||
+                    rec.metadata?.nombre_difunto ||
+                    rec.metadata?.nombre_contrayente_1 ||
+                    rec.metadata?.nombre ||
+                    "";
+                  const isPendingWithoutName =
+                    (rec.status === "pending" || rec.status === "in_progress") &&
+                    (!rawPerson ||
+                      rawPerson.includes("Pendiente") ||
+                      rawPerson === "Sin titular registrado" ||
+                      rawPerson === "—");
+                  const canonicalCode =
+                    rec.canonical_filename || rec.original_filename || rec.file_name || "";
 
                   return (
-                    <tr key={r.id} className="hover:bg-gray-50 transition">
-                      {/* ID / N° Acta */}
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
-                        {r.act_number ? (r.act_number === "S/N" ? "Acta S/N" : `Acta ${r.act_number}`) : `Partida #${r.entry_number || 1}`}
+                    <tr key={`${rec.id}-${entryNum}`} className="hover:bg-gray-50 transition">
+                      {/* Columna 1 — ACTA / PARTIDA */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="font-semibold text-gray-900">
+                            {rec.act_number && rec.act_number !== "—"
+                              ? `Acta ${rec.act_number}`
+                              : "Sin N° Acta"}
+                          </span>
+                          {totalEntries > 1 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              Partida {entryNum} de {totalEntries}
+                            </span>
+                          )}
+                          {rec.is_continued && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                              ↪ Continúa de folio anterior
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Folio Físico con Cara */}
+                      {/* Columna 2 — FOLIO FÍSICO */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-800 border border-slate-200">
                           F.{folioNum}{folioSideChar}
                         </span>
                       </td>
 
-                      {/* Persona Principal */}
-                      <td className="px-4 py-3 text-gray-900 font-medium max-w-[200px] truncate" title={String(principalPerson)}>
-                        {principalPerson}
-                      </td>
-
-                      {/* Fecha del evento o sacramento */}
-                      <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                        {recordDate}
-                      </td>
-
-                      {/* Tomo / Libro */}
-                      <td className="px-4 py-3 text-gray-600 text-xs max-w-[160px] truncate" title={r.tome_name || r.batch_name || ""}>
-                        {r.tome_name || r.batch_name || "—"}
-                      </td>
-
-                      {/* Estado */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {isVerified ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            Verificado
-                          </span>
-                        ) : isCompleted ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Completado
-                          </span>
+                      {/* Columna 3 — PERSONA PRINCIPAL */}
+                      <td className="px-4 py-3 max-w-[260px]">
+                        {isBlank ? (
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                              📄 Folio en Blanco / Sin Partidas
+                            </span>
+                            {canonicalCode && (
+                              <span className="text-[11px] font-mono text-gray-400 truncate max-w-full">
+                                {canonicalCode}
+                              </span>
+                            )}
+                          </div>
+                        ) : isPendingWithoutName ? (
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span className="text-xs italic text-amber-700 font-medium">
+                              ⏳ Pendiente de transcripción
+                            </span>
+                            {canonicalCode && (
+                              <span className="text-[11px] font-mono text-gray-400 truncate max-w-full">
+                                {canonicalCode}
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-                            <Clock className="w-3.5 h-3.5" />
-                            En edición
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span
+                              className="font-bold text-gray-900 truncate max-w-full"
+                              title={String(rawPerson || "Sin titular registrado")}
+                            >
+                              {rawPerson || "Sin titular registrado"}
+                            </span>
+                            <div className="flex items-center gap-1.5 text-[11px] text-gray-400 truncate max-w-full">
+                              {rec.record_type && (
+                                <span className="font-medium text-gray-500">
+                                  {rec.record_type}
+                                </span>
+                              )}
+                              {rec.record_type && canonicalCode && <span>•</span>}
+                              {canonicalCode && (
+                                <span className="font-mono truncate">{canonicalCode}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Columna 4 — FECHA ACTA */}
+                      <td className="px-4 py-3 text-gray-700 text-xs whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">
+                            {formatHistoricalDate(rec.event_date)}
+                          </span>
+                          {rec.birth_date && rec.birth_date !== "—" && (
+                            <span className="text-[11px] text-gray-400">
+                              Nac: {formatHistoricalDate(rec.birth_date)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Columna 5 — TOMO / LIBRO */}
+                      <td
+                        className="px-4 py-3 text-gray-600 text-xs max-w-[180px] truncate"
+                        title={rec.tome_name || "Sin Clasificar"}
+                      >
+                        {rec.tome_name && rec.tome_name !== "Sin Clasificar" ? (
+                          <span className="font-medium text-gray-800">{rec.tome_name}</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                            Sin Clasificar
                           </span>
                         )}
                       </td>
 
-                      {/* Acciones */}
+                      {/* Columna 6 — ESTADO */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {rec.status === "verified" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Verificado
+                          </span>
+                        ) : rec.status === "completed" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Completado
+                          </span>
+                        ) : rec.status === "revision" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            Dudoso / Revisión
+                          </span>
+                        ) : rec.status === "in_progress" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">
+                            <Play className="w-3 h-3 fill-current" />
+                            En Progreso
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            <Clock className="w-3.5 h-3.5" />
+                            Pendiente
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Columna 7 — ACCIONES CONTEXTUALES */}
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => router.push(`/${subdomain}/visor?folio_id=${r.folio_id || r.id}`)}
-                            title="Abrir en Visor de Indexación"
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            Visor
-                          </button>
-                          <button
-                            onClick={() => handleOpenDetail(r)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-medium transition cursor-pointer"
-                            title="Ver o corregir metadatos"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            Detalle
-                          </button>
-                          <button
-                            onClick={() => setRecordToDelete(r)}
-                            title="Eliminar registro"
-                            className="inline-flex items-center justify-center p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {rec.status === "pending" ||
+                          rec.status === "revision" ||
+                          rec.status === "in_progress" ? (
+                            <>
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/${subdomain}/visor?folio_id=${rec.folio_id || rec.id}`
+                                  )
+                                }
+                                title="Transcribir en Visor de Indexación"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                Transcribir
+                              </button>
+                              <button
+                                onClick={() => handleOpenDetail(rec)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-medium transition cursor-pointer"
+                                title="Ver detalle o arbitrar estado"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Detalle
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleOpenDetail(rec)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                title="Ver detalle y arbitrar calidad"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Detalle
+                              </button>
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/${subdomain}/visor?folio_id=${rec.folio_id || rec.id}`
+                                  )
+                                }
+                                title="Abrir en Visor de Indexación"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                Visor
+                              </button>
+                            </>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => setRecordToDelete(rec)}
+                              title="Eliminar registro"
+                              className="inline-flex items-center justify-center p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -918,6 +1442,7 @@ export default function RecordsPage() {
               >
                 <option value={20}>20</option>
                 <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
             </div>
           </div>
@@ -943,7 +1468,7 @@ export default function RecordsPage() {
         </div>
       </div>
 
-      {/* Modal Split Screen: Detalle & Corrección */}
+      {/* Modal Split Screen: Detalle, Carga Bajo Demanda & Arbitraje de Calidad */}
       {isModalOpen && selectedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 sm:p-6 animate-fade-in">
           <div className="bg-gray-900 rounded-2xl w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden text-white border border-gray-800 shadow-2xl">
@@ -955,20 +1480,41 @@ export default function RecordsPage() {
                   <h2 className="text-base font-bold text-gray-100 flex items-center gap-2">
                     <span>Folio:</span>
                     <span className="font-mono text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-300">
-                      {selectedRecord.id}
+                      F.{selectedRecord.folio_number || 1}
+                      {selectedRecord.folio_side === "vuelto"
+                        ? "v"
+                        : selectedRecord.folio_side === "unica"
+                        ? "u"
+                        : "r"}
                     </span>
-                    {selectedRecord.status === "completed" ? (
+                    {selectedRecord.status === "verified" ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-950 text-indigo-300 border border-indigo-800">
+                        Verificado
+                      </span>
+                    ) : selectedRecord.status === "completed" ? (
                       <span className="px-2 py-0.5 rounded-full text-xs bg-green-950 text-green-400 border border-green-800">
                         Completado
                       </span>
+                    ) : selectedRecord.status === "revision" ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-orange-950 text-orange-300 border border-orange-800">
+                        Dudoso / Revisión
+                      </span>
+                    ) : selectedRecord.status === "in_progress" ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-sky-950 text-sky-300 border border-sky-800">
+                        En Progreso
+                      </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-950 text-yellow-400 border border-yellow-800">
-                        En edición
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-amber-950 text-amber-300 border border-amber-800">
+                        Pendiente
                       </span>
                     )}
                   </h2>
                   <p className="text-xs text-gray-400">
-                    Archivo: {selectedRecord.file_name || selectedRecord.r2_url || "Desconocido"}
+                    Archivo:{" "}
+                    {selectedRecord.canonical_filename ||
+                      selectedRecord.file_name ||
+                      selectedRecord.r2_url ||
+                      "Desconocido"}
                   </p>
                 </div>
               </div>
@@ -1058,7 +1604,12 @@ export default function RecordsPage() {
                   onMouseLeave={handleMouseLeave}
                   onWheel={handleWheel}
                 >
-                  {selectedRecord.view_url ? (
+                  {loadingModalImage ? (
+                    <div className="text-center text-gray-400 p-8">
+                      <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-2" />
+                      <p className="text-sm">Cargando imagen del folio desde Cloudflare R2...</p>
+                    </div>
+                  ) : selectedRecord.view_url ? (
                     <>
                       <img
                         ref={modalImgRef}
@@ -1066,7 +1617,7 @@ export default function RecordsPage() {
                         alt="Folio visualizado"
                         style={{
                           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-                          cursor: magnifier.active ? "crosshair" : (isDragging ? "grabbing" : "grab"),
+                          cursor: magnifier.active ? "crosshair" : isDragging ? "grabbing" : "grab",
                           transition: isDragging ? "none" : "transform 0.1s ease-out",
                           maxHeight: "85%",
                           maxWidth: "85%",
@@ -1096,10 +1647,56 @@ export default function RecordsPage() {
                 </div>
               </div>
 
-              {/* Right Column: Record Edit Form */}
+              {/* Right Column: Quality Arbitration & Record Edit Form */}
               <div className="w-full md:w-[480px] bg-gray-900 flex flex-col justify-between overflow-hidden">
                 <form onSubmit={handleSaveChanges} className="flex-1 flex flex-col justify-between overflow-hidden">
                   <div className="flex-1 p-6 overflow-y-auto space-y-5">
+                    {/* Quality Arbitration Bar */}
+                    {canArbitrate && (
+                      <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Control de Calidad / Arbitraje
+                          </span>
+                          {updatingStatus && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-blue-400">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Actualizando...
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            disabled={Boolean(updatingStatus) || saving}
+                            onClick={() => handleArbitrateStatus("verified")}
+                            className="inline-flex items-center justify-center gap-1 px-2.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                            <span>✔ Verificar Acta</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(updatingStatus) || saving}
+                            onClick={() => handleArbitrateStatus("revision")}
+                            className="inline-flex items-center justify-center gap-1 px-2.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span>⚠ Enviar a Dudoso</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(updatingStatus) || saving}
+                            onClick={() => handleArbitrateStatus("pending")}
+                            className="inline-flex items-center justify-center gap-1 px-2.5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                            <span>↩ Devolver a Pendiente</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Status Alert if in_progress */}
                     {selectedRecord.status === "in_progress" && (
                       <div className="p-3 bg-yellow-950/80 border border-yellow-800/80 rounded-xl space-y-3 text-yellow-200 text-xs">
@@ -1115,7 +1712,7 @@ export default function RecordsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              router.push(`/${subdomain}/visor?folio_id=${selectedRecord.id}`);
+                              router.push(`/${subdomain}/visor?folio_id=${selectedRecord.folio_id || selectedRecord.id}`);
                             }}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-semibold rounded-lg text-xs transition cursor-pointer shadow-xs"
                           >
@@ -1124,12 +1721,14 @@ export default function RecordsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleReleaseFolio(selectedRecord.id)}
-                            disabled={releasingId === selectedRecord.id}
+                            onClick={() => handleReleaseFolio(selectedRecord.folio_id || selectedRecord.id)}
+                            disabled={releasingId === (selectedRecord.folio_id || selectedRecord.id)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 font-medium rounded-lg text-xs transition cursor-pointer border border-gray-700 disabled:opacity-50"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
-                            {releasingId === selectedRecord.id ? "Liberando..." : "Liberar folio a la cola"}
+                            {releasingId === (selectedRecord.folio_id || selectedRecord.id)
+                              ? "Liberando..."
+                              : "Liberar folio a la cola"}
                           </button>
                         </div>
                       </div>
@@ -1194,15 +1793,19 @@ export default function RecordsPage() {
 
                   {/* Form Actions Footer */}
                   <div className="p-4 bg-gray-950 border-t border-gray-800 flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setRecordToDelete(selectedRecord)}
-                      disabled={saving}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-950/80 hover:bg-red-900 border border-red-800/80 text-red-300 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                      Eliminar Registro
-                    </button>
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => setRecordToDelete(selectedRecord)}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-950/80 hover:bg-red-900 border border-red-800/80 text-red-300 rounded-lg text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        Eliminar Registro
+                      </button>
+                    ) : (
+                      <div />
+                    )}
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -1242,7 +1845,7 @@ export default function RecordsPage() {
                 <p className="text-sm text-gray-600 leading-relaxed">
                   ¿Estás seguro de que deseas eliminar permanentemente el folio con archivo{" "}
                   <strong className="text-gray-900">
-                    {recordToDelete.file_name || recordToDelete.id.slice(0, 8)}
+                    {recordToDelete.canonical_filename || recordToDelete.file_name || recordToDelete.id.slice(0, 8)}
                   </strong>
                   ? Esta acción borrará sus metadatos indexados y no se puede deshacer.
                 </p>
@@ -1301,4 +1904,5 @@ export default function RecordsPage() {
     </div>
   );
 }
+
 

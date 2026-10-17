@@ -64,9 +64,16 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Pipeline de Imágenes Paleográficas y Storage:** Script `tools/seeding/upload_corpus_to_r2.py` con soporte dual para Cloudflare R2 y fallback vectorial de alta fidelidad, asegurando renderizado al 100% en el Visor Dual.
 - **Seeding Idempotente:** Script orquestador `tools/seeding/seed_realistic_corpus.py` con opción `--clean` y aislamiento multi-tenant estricto.
 
+## Módulo 16 COMPLETADO: Rediseño Jerárquico del Explorador de Registros (`/records`), Filtrado por Tomos/Carpetas y Arbitraje Multi-Estado
+
+- **Sustitución de "Lotes" por Selectores en Cascada (DCam):** En `/records`, se reemplazó el obsoleto selector de "Lotes" por 2 selectores en cascada (`Serie / Carpeta` ➔ `Tomo / Libro`) sincronizados automáticamente con el motor de exportación DIP de FamilySearch, incluyendo soporte para folios sueltos (`Sin Clasificar`).
+- **Visibilidad del 100% de Estados y Contadores Interactivos:** El endpoint `GET /api/v1/records` unifica partidas de `folio_entries` y filas virtuales para folios pendientes o en blanco (`is_blank`), devolviendo contadores en vivo (`total`, `completed`, `verified`, `pending`, `revision`, `in_progress`) que alimentan 5 tarjetas superiores interactivas.
+- **Ordenamiento Archivístico Natural e Insignias:** Por defecto ordena por `Tomo ➔ Folio Físico (F.1r, F.1v...) ➔ N° de Partida`. Muestra insignias de multi-partida (`Partida X de Y`), continuación interfolio (`↪ Continúa de folio anterior`), folios en blanco (`📄 Folio en Blanco / Sin Partidas`) y pendientes (`⏳ Pendiente de transcripción`).
+- **Arbitraje de Calidad en Modal "Detalle":** Carga bajo demanda de la URL firmada de Cloudflare R2 al abrir el detalle y barra de arbitraje conectada a `PATCH /api/v1/records/{id}/status` (`[ ✔ Verificar Acta ]`, `[ ⚠ Enviar a Dudoso ]`, `[ ↩ Devolver a Pendiente ]`).
+
 ## Próximos pasos (Pendientes)
 - **Ruta de Optimización y Rendimiento de Vistas:** Auditar la navegación y carga entre páginas (`/ingest`, `/visor`, `/records`, `/dashboard`). Detectar re-renders innecesarios, depurar código muerto o consultas bloqueantes de Supabase para garantizar transiciones fluidas.
-- **SPEC-016: Rol de Evaluador y Mesa de Arbitraje de Calidad (`/evaluacion`).**
+- **SPEC-017: Rol dedicado de Evaluador (`evaluator`) y Mesa de Arbitraje (`/evaluacion`).**
 - **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores sin desvíos de URL.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)

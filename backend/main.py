@@ -1974,7 +1974,15 @@ async def get_batches(auth: Dict[str, Any] = Depends(get_auth_context)):
         raise HTTPException(status_code=500, detail=str(e))
 
 class UpdateRecordMetadataRequest(BaseModel):
-    metadata: Dict[str, Any]
+    metadata: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+    folio_id: Optional[str] = None
+
+class UpdateRecordStatusRequest(BaseModel):
+    status: str  # 'verified', 'completed', 'revision', 'pending', 'in_progress'
+    folio_id: Optional[str] = None
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class RecordTemplateField(BaseModel):
     id: Optional[str] = None
@@ -1997,251 +2005,490 @@ class RecordItem(BaseModel):
     updated_at: Optional[str] = None
     view_url: Optional[str] = None
 
+def _infer_series_from_text(text: str) -> Optional[str]:
+    t = (text or "").lower()
+    if "bautis" in t:
+        return "bautismo"
+    if "matrim" in t or "casam" in t:
+        return "matrimonio"
+    if "defunc" in t or "entierro" in t or "muert" in t or "obit" in t:
+        return "defuncion"
+    if "sin clasificar" in t or "unclassified" in t:
+        return "unclassified"
+    return None
+
+def _resolve_folder_series_and_tome(folder_id: Optional[str], folder_map: Dict[str, Dict[str, Any]], fallback_meta: Optional[Dict[str, Any]] = None) -> tuple[str, str, bool]:
+    """
+    Devuelve (tome_name, series_key, is_unclassified) para un folder_id dado.
+    series_key in ('bautismo', 'matrimonio', 'defuncion', 'unclassified')
+    """
+    f_meta = fallback_meta or {}
+    if not folder_id or str(folder_id) not in folder_map:
+        meta_series = _infer_series_from_text(str(f_meta.get("series") or f_meta.get("sacrament_type") or f_meta.get("entry_type") or ""))
+        return "Sin Clasificar", (meta_series or "unclassified"), True
+
+    folder = folder_map[str(folder_id)]
+    folder_meta = folder.get("metadata") or {}
+    folder_name = str(folder.get("name") or "Sin Clasificar")
+
+    if bool(folder_meta.get("is_virtual_unclassified")) or folder_name.strip().lower() in ("sin clasificar", "unclassified"):
+        return "Sin Clasificar", "unclassified", True
+
+    # Determinar series_key revisando metadata propia, nombre propio o carpeta padre
+    raw_series = str(folder_meta.get("sacrament_type") or folder_meta.get("series") or "").strip().lower()
+    series_key = _infer_series_from_text(raw_series)
+    if not series_key:
+        series_key = _infer_series_from_text(folder_name)
+
+    parent_id = folder.get("parent_id")
+    visited = set()
+    while not series_key and parent_id and str(parent_id) in folder_map and str(parent_id) not in visited:
+        visited.add(str(parent_id))
+        parent = folder_map[str(parent_id)]
+        p_meta = parent.get("metadata") or {}
+        p_raw = str(p_meta.get("sacrament_type") or p_meta.get("series") or "").strip().lower()
+        series_key = _infer_series_from_text(p_raw) or _infer_series_from_text(str(parent.get("name") or ""))
+        parent_id = parent.get("parent_id")
+
+    if not series_key:
+        series_key = _infer_series_from_text(str(f_meta.get("series") or f_meta.get("sacrament_type") or f_meta.get("entry_type") or "")) or "bautismo"
+
+    return folder_name, series_key, False
+
+def _normalize_record_status(raw_status: Optional[str]) -> str:
+    st = str(raw_status or "pending").strip().lower()
+    if st == "processing":
+        return "in_progress"
+    if st in ("doubtful", "dudoso", "error"):
+        return "revision"
+    if st in ("completed", "verified", "pending", "revision", "in_progress"):
+        return st
+    return "pending"
+
+def _extract_entry_fields(raw_meta: Dict[str, Any], f_meta: Dict[str, Any], row_status: str, is_blank: bool) -> tuple[str, str, str, str, Dict[str, Any]]:
+    meta = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) and len(raw_meta.get("data")) > 0 else raw_meta
+    if not isinstance(meta, dict):
+        meta = {}
+    f_data = f_meta.get("data") if isinstance(f_meta.get("data"), dict) and len(f_meta.get("data")) > 0 else f_meta
+    if not isinstance(f_data, dict):
+        f_data = {}
+
+    combined_meta = {**f_meta, **f_data, **raw_meta, **meta}
+
+    first_name = str(
+        combined_meta.get("first_name") or
+        combined_meta.get("primer_nombre") or
+        combined_meta.get("nombres") or
+        combined_meta.get("nombre") or
+        combined_meta.get("difunto_nombres") or
+        ""
+    ).strip()
+    last_name = str(
+        combined_meta.get("last_name") or
+        combined_meta.get("apellidos") or
+        combined_meta.get("apellido") or
+        combined_meta.get("difunto_apellidos") or
+        ""
+    ).strip()
+
+    full_name = f"{first_name} {last_name}".strip()
+    if not full_name:
+        full_name = str(
+            combined_meta.get("bautizado") or
+            combined_meta.get("nombre_completo") or
+            combined_meta.get("nombre_bautizado") or
+            combined_meta.get("difunto") or
+            combined_meta.get("nombre_difunto") or
+            combined_meta.get("principal_person") or
+            combined_meta.get("person_name") or
+            ""
+        ).strip()
+    if not full_name and (
+        combined_meta.get("novio_nombres") or
+        combined_meta.get("novia_nombres") or
+        combined_meta.get("contrayente_1") or
+        combined_meta.get("contrayente_2") or
+        combined_meta.get("esposo_nombre") or
+        combined_meta.get("esposa_nombre")
+    ):
+        novio = (
+            f"{combined_meta.get('novio_nombres', '')} {combined_meta.get('novio_apellidos', '')}".strip() or
+            str(combined_meta.get("contrayente_1") or combined_meta.get("esposo_nombre") or "").strip()
+        )
+        novia = (
+            f"{combined_meta.get('novia_nombres', '')} {combined_meta.get('novia_apellidos', '')}".strip() or
+            str(combined_meta.get("contrayente_2") or combined_meta.get("esposa_nombre") or "").strip()
+        )
+        full_name = f"{novio} y {novia}".strip(" y ")
+
+    if is_blank and not full_name:
+        principal_person = "📄 Folio en Blanco / Sin Partidas"
+    elif full_name:
+        principal_person = full_name
+    elif row_status in ("pending", "in_progress"):
+        principal_person = "⏳ Pendiente de transcripción"
+    else:
+        principal_person = "Sin titular registrado"
+
+    event_date = str(
+        combined_meta.get("event_date") or
+        combined_meta.get("fecha_sacramento") or
+        combined_meta.get("fecha_matrimonio") or
+        combined_meta.get("fecha_defuncion") or
+        combined_meta.get("fecha_entierro") or
+        combined_meta.get("fecha_bautismo") or
+        combined_meta.get("fecha_acta") or
+        combined_meta.get("fecha") or
+        ""
+    ).strip()
+
+    birth_date = str(
+        combined_meta.get("birth_date") or
+        combined_meta.get("fecha_nacimiento") or
+        ""
+    ).strip()
+
+    record_type = str(
+        raw_meta.get("entry_type") or
+        combined_meta.get("record_type") or
+        combined_meta.get("tipo_acta") or
+        combined_meta.get("sacrament_type") or
+        "Partida"
+    ).strip().capitalize()
+
+    return principal_person, event_date, birth_date, record_type, combined_meta
+
+
 @app.get("/api/v1/records")
 async def get_records(
+    series: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    status: Optional[str] = "all",
     batch_id: Optional[str] = None,
     search: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
+    limit: Optional[int] = None,
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     if auth.get("role") == "digitizer":
         raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para consultar registros")
     try:
         tenant_id = auth["tenant_id"]
-        client = auth.get("user_client") or supabase
-        
-        limit = max(1, min(page_size, 100))
-        offset = max(0, (page - 1) * limit)
-        range_end = offset + limit - 1
+        eff_limit = max(1, min(limit if limit is not None else page_size, 100))
+        page = max(1, page)
 
-        raw_entries = []
-        total_count = 0
-
-        # 1. Consultar directamente folio_entries completadas / verificadas
+        # Paso A — Cargar carpetas/tomos del tenant (document_folders)
+        folders = []
         try:
-            entry_query = client.table("folio_entries")\
-                .select("*", count="exact")\
-                .eq("tenant_id", tenant_id)\
-                .in_("status", ["completed", "verified"])
+            f_res = supabase.table("document_folders").select("id, name, parent_id, folder_type, metadata").eq("tenant_id", tenant_id).execute()
+            folders = f_res.data or []
+        except Exception as e_folders:
+            print(f"Notice querying document_folders in get_records: {e_folders}")
+            folders = []
 
-            if start_date:
-                entry_query = entry_query.gte("created_at", start_date)
-            if end_date:
-                entry_query = entry_query.lte("created_at", end_date)
+        folder_map: Dict[str, Dict[str, Any]] = {str(f["id"]): f for f in folders if f.get("id")}
 
-            if search and search.strip():
-                s_term = search.strip()
-                entry_query = entry_query.ilike("act_number", f"%{s_term}%")
+        # Paso B — Cargar folios del tenant (folios)
+        all_folios = []
+        try:
+            folios_query = supabase.table("folios").select(
+                "id, folder_id, batch_id, status, metadata, r2_url, original_filename, canonical_filename, sequence_order, created_at, verified_at, updated_at"
+            ).eq("tenant_id", tenant_id)
+            if batch_id:
+                folios_query = folios_query.eq("batch_id", batch_id)
+            folios_res = folios_query.execute()
+            all_folios = folios_res.data or []
+        except Exception as e_folios:
+            print(f"Notice querying folios in get_records: {e_folios}")
+            all_folios = []
 
-            entry_query = entry_query.order("created_at", desc=True).range(offset, range_end)
-            res = entry_query.execute()
-            raw_entries = res.data or []
-            total_count = res.count if res.count is not None else len(raw_entries)
-        except Exception as e_err:
-            print(f"Notice querying folio_entries in get_records: {e_err}")
-            raw_entries = []
-            total_count = 0
+        norm_series = (series or "").strip().lower()
+        norm_folder_id = (folder_id or "").strip()
 
-        # 2. Fallback a folios para bases de datos heredadas si folio_entries está vacía
-        if not raw_entries and total_count == 0:
-            try:
-                folio_query = client.table("folios")\
-                    .select("id, folder_id, status, metadata, r2_url, original_filename, canonical_filename, sequence_order, created_at, verified_at, updated_at", count="exact")\
-                    .eq("tenant_id", tenant_id)\
-                    .in_("status", ["completed", "verified"])
+        filtered_folios = []
+        for f in all_folios:
+            f_folder_id = str(f.get("folder_id")) if f.get("folder_id") is not None else None
+            f_meta = f.get("metadata") or {}
+            tome_name, series_key, is_unclassified = _resolve_folder_series_and_tome(f_folder_id, folder_map, f_meta)
 
-                if batch_id:
-                    folio_query = folio_query.eq("batch_id", batch_id)
-                if start_date:
-                    folio_query = folio_query.gte("verified_at", start_date)
-                if end_date:
-                    folio_query = folio_query.lte("verified_at", end_date)
+            # Filtrar por folder_id
+            if norm_folder_id and norm_folder_id.lower() not in ("all", "todos"):
+                if norm_folder_id.lower() == "unclassified":
+                    if not is_unclassified:
+                        continue
+                else:
+                    if f_folder_id != norm_folder_id:
+                        continue
 
-                folio_query = folio_query.order("created_at", desc=True).range(offset, range_end)
-                f_res = folio_query.execute()
-                fallback_folios = f_res.data or []
-                total_count = f_res.count if f_res.count is not None else len(fallback_folios)
+            # Filtrar por series
+            if norm_series and norm_series not in ("all", "todos"):
+                if norm_series == "unclassified":
+                    if not is_unclassified:
+                        continue
+                elif norm_series in ("bautismo", "matrimonio", "defuncion"):
+                    f_meta_series = _infer_series_from_text(str(f_meta.get("series") or f_meta.get("sacrament_type") or ""))
+                    if series_key != norm_series and f_meta_series != norm_series:
+                        continue
 
-                records = []
-                for f in fallback_folios:
-                    raw_meta = f.get("metadata") or {}
-                    meta = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) and len(raw_meta.get("data")) > 0 else raw_meta
+            f["_resolved_tome_name"] = tome_name
+            f["_resolved_series_key"] = series_key
+            filtered_folios.append(f)
 
-                    # Extracción robusta de persona principal
-                    first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or meta.get("difunto_nombres") or "").strip()
-                    last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or meta.get("difunto_apellidos") or "").strip()
+        # Paso C — Cargar todas las partidas (folio_entries) del tenant
+        all_entries = []
+        try:
+            entries_res = supabase.table("folio_entries").select("*").eq("tenant_id", tenant_id).execute()
+            all_entries = entries_res.data or []
+        except Exception as e_entries:
+            print(f"Notice querying folio_entries in get_records: {e_entries}")
+            all_entries = []
 
-                    full_name = f"{first_name} {last_name}".strip()
-                    if not full_name:
-                        full_name = (
-                            meta.get("bautizado") or 
-                            meta.get("nombre_completo") or 
-                            meta.get("nombre_bautizado") or 
-                            meta.get("difunto") or 
-                            meta.get("nombre_difunto") or
-                            ""
-                        )
-                    if not full_name and (meta.get("novio_nombres") or meta.get("novia_nombres") or meta.get("contrayente_1") or meta.get("contrayente_2")):
-                        novio = f"{meta.get('novio_nombres', '')} {meta.get('novio_apellidos', '')}".strip() or meta.get("contrayente_1", "").strip()
-                        novia = f"{meta.get('novia_nombres', '')} {meta.get('novia_apellidos', '')}".strip() or meta.get("contrayente_2", "").strip()
-                        full_name = f"{novio} y {novia}".strip(" y ")
+        entries_by_folio: Dict[str, List[Dict[str, Any]]] = {}
+        for entry in all_entries:
+            fid = str(entry.get("folio_id") or "")
+            if not fid:
+                continue
+            entries_by_folio.setdefault(fid, []).append(entry)
 
-                    principal_person = full_name or "Sin titular registrado"
+        for fid in entries_by_folio:
+            entries_by_folio[fid].sort(key=lambda x: int(x.get("entry_number") or 1))
 
-                    # Extracción de fecha
-                    event_date = (
-                        meta.get("event_date") or 
-                        meta.get("fecha_sacramento") or 
-                        meta.get("fecha_matrimonio") or 
-                        meta.get("fecha_defuncion") or 
-                        meta.get("fecha_entierro") or 
-                        meta.get("fecha_bautismo") or 
-                        meta.get("fecha_acta") or 
-                        meta.get("fecha") or 
-                        ""
-                    ).strip()
-                    birth_date = (meta.get("birth_date") or meta.get("fecha_nacimiento") or "").strip()
-                    record_type = (
-                        raw_meta.get("entry_type") or 
-                        meta.get("record_type") or 
-                        meta.get("tipo_acta") or 
-                        "Partida"
-                    ).capitalize()
+        # Paso D — Construir lista unificada de filas (unified_rows)
+        unified_rows: List[Dict[str, Any]] = []
+        for f in filtered_folios:
+            fid = str(f["id"])
+            f_entries = entries_by_folio.get(fid, [])
+            total_entries_in_folio = len(f_entries)
+            f_meta = f.get("metadata") or {}
+            if not isinstance(f_meta, dict):
+                f_meta = {}
+            f_data_inner = f_meta.get("data") if isinstance(f_meta.get("data"), dict) else {}
+            folio_is_blank = bool(f_meta.get("is_blank", False) or f_data_inner.get("is_blank", False))
+            tome_name = f.get("_resolved_tome_name") or "Sin Clasificar"
+            series_key = f.get("_resolved_series_key") or "unclassified"
+            c_filename = f.get("canonical_filename") or f.get("original_filename") or f"folio_{fid}.jpg"
 
-                    combined_meta = {**raw_meta, **meta} if isinstance(meta, dict) and isinstance(raw_meta, dict) else (meta or raw_meta)
+            if total_entries_in_folio > 0:
+                for entry in f_entries:
+                    raw_meta = entry.get("metadata") or {}
+                    if not isinstance(raw_meta, dict):
+                        raw_meta = {}
+                    e_data_inner = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) else {}
+                    row_status = _normalize_record_status(entry.get("status") or f.get("status") or "pending")
+                    entry_is_blank = bool(
+                        folio_is_blank or
+                        raw_meta.get("is_blank", False) or
+                        e_data_inner.get("is_blank", False)
+                    )
+                    principal_person, event_date, birth_date, record_type, combined_meta = _extract_entry_fields(
+                        raw_meta, f_meta, row_status, entry_is_blank
+                    )
+                    if entry_is_blank:
+                        combined_meta["is_blank"] = True
 
-                    records.append({
-                        "id": f["id"],
-                        "folio_id": f["id"],
-                        "entry_number": 1,
-                        "folio_number": f.get("sequence_order") or 1,
-                        "folio_side": "recto",
-                        "act_number": meta.get("numero_acta") or meta.get("act_number") or "S/N",
-                        "status": f.get("status") or "completed",
-                        "is_continued": False,
-                        "continued_from_entry_id": None,
+                    folio_num = (
+                        entry.get("folio_number")
+                        if entry.get("folio_number") is not None
+                        else (f_meta.get("folio_number") or f.get("sequence_order") or 1)
+                    )
+                    folio_side = str(entry.get("folio_side") or f_meta.get("folio_side") or "recto").lower()
+                    act_num = (
+                        entry.get("act_number") or
+                        combined_meta.get("numero_acta") or
+                        combined_meta.get("act_number") or
+                        ("—" if row_status == "pending" else "S/N")
+                    )
+
+                    unified_rows.append({
+                        "id": entry.get("id"),
+                        "entry_id": entry.get("id"),
+                        "folio_id": fid,
+                        "is_virtual_folio_row": False,
+                        "entry_number": int(entry.get("entry_number") or 1),
+                        "total_entries_in_folio": total_entries_in_folio,
+                        "folio_number": folio_num,
+                        "folio_side": folio_side,
+                        "act_number": str(act_num),
+                        "status": row_status,
+                        "is_continued": bool(entry.get("is_continued", False)),
+                        "continued_from_entry_id": entry.get("continued_from_entry_id"),
+                        "is_blank": entry_is_blank,
                         "metadata": combined_meta,
                         "principal_person": principal_person,
                         "person_name": principal_person,
                         "event_date": event_date,
                         "birth_date": birth_date,
                         "record_type": record_type,
-                        "canonical_filename": f.get("canonical_filename") or f.get("original_filename"),
-                        "file_name": f.get("canonical_filename") or f.get("original_filename"),
-                        "created_at": f.get("created_at"),
-                        "verified_at": f.get("verified_at") or f.get("updated_at") or f.get("created_at")
+                        "folder_id": f.get("folder_id"),
+                        "tome_name": tome_name,
+                        "series": series_key,
+                        "batch_id": f.get("batch_id"),
+                        "canonical_filename": c_filename,
+                        "file_name": c_filename,
+                        "r2_url": f.get("r2_url"),
+                        "sequence_order": f.get("sequence_order") or 1,
+                        "created_at": entry.get("created_at") or f.get("created_at"),
+                        "verified_at": f.get("verified_at") or entry.get("updated_at") or entry.get("created_at")
                     })
-            except Exception as f_err:
-                print(f"Notice querying fallback folios in get_records: {f_err}")
-                records = []
-                total_count = 0
-        else:
-            # Enriquecer partidas con información de archivo y tomo
-            folio_ids = list(set(str(e["folio_id"]) for e in raw_entries if e.get("folio_id")))
-            folio_info_map = {}
-            if folio_ids:
-                try:
-                    f_lookup = client.table("folios").select("id, folder_id, canonical_filename, original_filename, sequence_order, document_folders(name)").in_("id", folio_ids).execute()
-                    for f in (f_lookup.data or []):
-                        folio_info_map[str(f["id"])] = f
-                except Exception as lk_err:
-                    print(f"Notice looking up folios: {lk_err}")
+            else:
+                row_status = _normalize_record_status(f.get("status") or "pending")
+                principal_person, event_date, birth_date, record_type, combined_meta = _extract_entry_fields(
+                    f_meta, f_meta, row_status, folio_is_blank
+                )
+                if folio_is_blank:
+                    combined_meta["is_blank"] = True
 
-            records = []
-            for entry in raw_entries:
-                raw_meta = entry.get("metadata") or {}
-                meta = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) and len(raw_meta.get("data")) > 0 else raw_meta
+                folio_num = f_meta.get("folio_number") or f.get("sequence_order") or 1
+                folio_side = str(f_meta.get("folio_side") or "recto").lower()
+                act_num = (
+                    combined_meta.get("numero_acta") or
+                    combined_meta.get("act_number") or
+                    ("—" if row_status == "pending" else "S/N")
+                )
 
-                # Extracción robusta de persona principal
-                first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or meta.get("difunto_nombres") or "").strip()
-                last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or meta.get("difunto_apellidos") or "").strip()
-
-                full_name = f"{first_name} {last_name}".strip()
-                if not full_name:
-                    full_name = (
-                        meta.get("bautizado") or 
-                        meta.get("nombre_completo") or 
-                        meta.get("nombre_bautizado") or 
-                        meta.get("difunto") or 
-                        meta.get("nombre_difunto") or
-                        ""
-                    )
-                if not full_name and (meta.get("novio_nombres") or meta.get("novia_nombres") or meta.get("contrayente_1") or meta.get("contrayente_2")):
-                    novio = f"{meta.get('novio_nombres', '')} {meta.get('novio_apellidos', '')}".strip() or meta.get("contrayente_1", "").strip()
-                    novia = f"{meta.get('novia_nombres', '')} {meta.get('novia_apellidos', '')}".strip() or meta.get("contrayente_2", "").strip()
-                    full_name = f"{novio} y {novia}".strip(" y ")
-
-                principal_person = full_name or "Sin titular registrado"
-
-                # Extracción de fecha
-                event_date = (
-                    meta.get("event_date") or 
-                    meta.get("fecha_sacramento") or 
-                    meta.get("fecha_matrimonio") or 
-                    meta.get("fecha_defuncion") or 
-                    meta.get("fecha_entierro") or 
-                    meta.get("fecha_bautismo") or 
-                    meta.get("fecha_acta") or 
-                    meta.get("fecha") or 
-                    ""
-                ).strip()
-                birth_date = (meta.get("birth_date") or meta.get("fecha_nacimiento") or "").strip()
-                record_type = (
-                    raw_meta.get("entry_type") or 
-                    meta.get("record_type") or 
-                    meta.get("tipo_acta") or 
-                    "Partida"
-                ).capitalize()
-
-                fid = str(entry.get("folio_id"))
-                f_obj = folio_info_map.get(fid, {})
-                c_filename = f_obj.get("canonical_filename") or f_obj.get("original_filename") or f"folio_{fid}.jpg"
-                folder_obj = f_obj.get("document_folders") or {}
-                tome_name = folder_obj.get("name") if isinstance(folder_obj, dict) else "Tomo"
-
-                raw_f_num = entry.get("folio_number")
-                if raw_f_num is not None:
-                    f_num = raw_f_num
-                else:
-                    f_num = f_obj.get("sequence_order") or 1
-
-                combined_meta = {**raw_meta, **meta} if isinstance(meta, dict) and isinstance(raw_meta, dict) else (meta or raw_meta)
-
-                records.append({
-                    "id": entry.get("id"),
+                unified_rows.append({
+                    "id": fid,
+                    "entry_id": None,
                     "folio_id": fid,
-                    "entry_number": entry.get("entry_number", 1),
-                    "folio_number": f_num,
-                    "folio_side": entry.get("folio_side") or "recto",
-                    "act_number": entry.get("act_number") or meta.get("numero_acta") or meta.get("act_number") or "S/N",
-                    "status": entry.get("status") or "completed",
-                    "is_continued": bool(entry.get("is_continued", False)),
-                    "continued_from_entry_id": entry.get("continued_from_entry_id"),
+                    "is_virtual_folio_row": True,
+                    "entry_number": 1,
+                    "total_entries_in_folio": 1,
+                    "folio_number": folio_num,
+                    "folio_side": folio_side,
+                    "act_number": str(act_num),
+                    "status": row_status,
+                    "is_continued": False,
+                    "continued_from_entry_id": None,
+                    "is_blank": folio_is_blank,
                     "metadata": combined_meta,
                     "principal_person": principal_person,
                     "person_name": principal_person,
                     "event_date": event_date,
                     "birth_date": birth_date,
                     "record_type": record_type,
+                    "folder_id": f.get("folder_id"),
                     "tome_name": tome_name,
+                    "series": series_key,
+                    "batch_id": f.get("batch_id"),
                     "canonical_filename": c_filename,
                     "file_name": c_filename,
-                    "created_at": entry.get("created_at"),
-                    "verified_at": entry.get("updated_at") or entry.get("created_at")
+                    "r2_url": f.get("r2_url"),
+                    "sequence_order": f.get("sequence_order") or 1,
+                    "created_at": f.get("created_at"),
+                    "verified_at": f.get("verified_at") or f.get("updated_at") or f.get("created_at")
                 })
 
-        total_pages = max(1, (total_count + limit - 1) // limit) if total_count > 0 else 1
+        # Paso E — Filtrar por Búsqueda Multicriterio (search) y Fechas Históricas (start_date, end_date)
+        filtered_rows = unified_rows
+        if search and search.strip():
+            s_term = search.strip().lower()
+
+            def _matches_search(row: Dict[str, Any]) -> bool:
+                f_num = row.get("folio_number") or 1
+                side_char = "v" if str(row.get("folio_side") or "").lower().startswith("v") else "r"
+                folio_label_1 = f"f.{f_num}{side_char}"
+                folio_label_2 = f"f{f_num}{side_char}"
+                folio_label_3 = f"f.{f_num}"
+                folio_label_4 = f"folio {f_num}"
+
+                searchable_fields = [
+                    str(row.get("principal_person") or ""),
+                    str(row.get("act_number") or ""),
+                    f"acta {row.get('act_number') or ''}",
+                    folio_label_1,
+                    folio_label_2,
+                    folio_label_3,
+                    folio_label_4,
+                    str(row.get("canonical_filename") or ""),
+                    str(row.get("tome_name") or ""),
+                ]
+                for val in searchable_fields:
+                    if s_term in val.lower():
+                        return True
+
+                meta_obj = row.get("metadata") or {}
+                if isinstance(meta_obj, dict):
+                    for k, v in meta_obj.items():
+                        if isinstance(v, (str, int, float)) and s_term in str(v).lower():
+                            return True
+                        elif isinstance(v, dict):
+                            for sub_v in v.values():
+                                if isinstance(sub_v, (str, int, float)) and s_term in str(sub_v).lower():
+                                    return True
+                return False
+
+            filtered_rows = [r for r in filtered_rows if _matches_search(r)]
+
+        if start_date and start_date.strip():
+            s_date = start_date.strip()[:10]
+            def _matches_start_date(row: Dict[str, Any]) -> bool:
+                ev = str(row.get("event_date") or "").strip()[:10]
+                if len(ev) == 10 and ev[4:5] == "-" and ev[7:8] == "-":
+                    return ev >= s_date
+                return False
+            filtered_rows = [r for r in filtered_rows if _matches_start_date(r)]
+
+        if end_date and end_date.strip():
+            e_date = end_date.strip()[:10]
+            def _matches_end_date(row: Dict[str, Any]) -> bool:
+                ev = str(row.get("event_date") or "").strip()[:10]
+                if len(ev) == 10 and ev[4:5] == "-" and ev[7:8] == "-":
+                    return ev <= e_date
+                return False
+            filtered_rows = [r for r in filtered_rows if _matches_end_date(r)]
+
+        # Paso F — Calcular Contadores en Vivo (counts) ANTES de filtrar por status
+        counts = {
+            "total": len(filtered_rows),
+            "completed": sum(1 for r in filtered_rows if r["status"] == "completed"),
+            "verified": sum(1 for r in filtered_rows if r["status"] == "verified"),
+            "pending": sum(1 for r in filtered_rows if r["status"] == "pending"),
+            "revision": sum(1 for r in filtered_rows if r["status"] == "revision"),
+            "in_progress": sum(1 for r in filtered_rows if r["status"] in ("in_progress", "processing")),
+        }
+
+        # Paso G — Aplicar Filtro de status
+        status_filtered_rows = filtered_rows
+        if status and status.strip().lower() not in ("all", "todos", ""):
+            st_filter = status.strip().lower()
+            if st_filter == "in_progress":
+                status_filtered_rows = [r for r in filtered_rows if r["status"] in ("in_progress", "processing")]
+            else:
+                status_filtered_rows = [r for r in filtered_rows if r["status"] == st_filter]
+
+        # Paso H — Ordenamiento Archivístico Natural y Paginación
+        def _archival_sort_key(r: Dict[str, Any]):
+            tome_str = str(r.get("tome_name") or "")
+            try:
+                f_num_int = int(r.get("folio_number") or 9999)
+            except (ValueError, TypeError):
+                f_num_int = 9999
+            f_side_str = str(r.get("folio_side") or "").lower()
+            side_order = 0 if f_side_str in ("recto", "r") else (1 if f_side_str in ("vuelto", "v") else 2)
+            try:
+                entry_num_int = int(r.get("entry_number") or 1)
+            except (ValueError, TypeError):
+                entry_num_int = 1
+            return (tome_str, f_num_int, side_order, entry_num_int)
+
+        status_filtered_rows.sort(key=_archival_sort_key)
+
+        total_count = len(status_filtered_rows)
+        total_pages = max(1, (total_count + eff_limit - 1) // eff_limit) if total_count > 0 else 1
+        offset = max(0, (page - 1) * eff_limit)
+        paginated_rows = status_filtered_rows[offset : offset + eff_limit]
 
         return {
             "status": "success",
-            "data": records,
+            "data": paginated_rows,
+            "counts": counts,
             "total": total_count,
             "total_records": total_count,
             "page": page,
-            "page_size": limit,
+            "page_size": eff_limit,
             "total_pages": total_pages
         }
     except Exception as e:
@@ -2249,6 +2496,116 @@ async def get_records(
             raise e
         print(f"Error in get_records: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/v1/records/{record_id}/status")
+async def update_record_status(
+    record_id: str,
+    request: UpdateRecordStatusRequest,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    try:
+        role = auth.get("role")
+        if role == "digitizer":
+            raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para arbitraje de estado")
+
+        tenant_id = auth["tenant_id"]
+        caller_id = auth["user_id"]
+
+        target_status = (request.status or "").strip().lower()
+        if target_status not in ("verified", "completed", "revision", "pending", "in_progress"):
+            raise HTTPException(status_code=400, detail=f"Estado no válido: {request.status}")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # 1. Intentar localizar primero en folio_entries
+        entry_res = None
+        try:
+            entry_res = supabase.table("folio_entries").select("*").eq("id", record_id).eq("tenant_id", tenant_id).execute()
+        except Exception as e_err:
+            print(f"Notice checking folio_entries in update_record_status: {e_err}")
+
+        if entry_res and entry_res.data:
+            entry = entry_res.data[0]
+            parent_folio_id = str(entry.get("folio_id") or request.folio_id or "")
+
+            entry_update: Dict[str, Any] = {
+                "status": target_status,
+                "updated_at": now_iso
+            }
+            if request.metadata is not None:
+                existing_meta = entry.get("metadata") or {}
+                if isinstance(existing_meta, dict) and isinstance(existing_meta.get("data"), dict):
+                    entry_update["metadata"] = {**existing_meta, "data": {**existing_meta["data"], **request.metadata}}
+                else:
+                    entry_update["metadata"] = request.metadata
+
+            supabase.table("folio_entries").update(entry_update).eq("id", record_id).eq("tenant_id", tenant_id).execute()
+
+            if parent_folio_id:
+                folio_update: Dict[str, Any] = {
+                    "status": target_status,
+                    "updated_at": now_iso
+                }
+                if target_status == "verified":
+                    folio_update["verified_at"] = now_iso
+                elif target_status in ("revision", "pending"):
+                    folio_update["locked_at"] = None
+
+                try:
+                    supabase.table("folios").update({**folio_update, "last_modified_by": caller_id}).eq("id", parent_folio_id).eq("tenant_id", tenant_id).execute()
+                except Exception:
+                    supabase.table("folios").update(folio_update).eq("id", parent_folio_id).eq("tenant_id", tenant_id).execute()
+
+            return {
+                "status": "success",
+                "new_status": target_status,
+                "verified_at": now_iso if target_status == "verified" else None
+            }
+
+        # 2. Si no es un entry_id, actualizar directamente el folio en folios
+        target_folio_id = request.folio_id or record_id
+        folio_res = supabase.table("folios").select("*").eq("id", target_folio_id).eq("tenant_id", tenant_id).execute()
+        if not folio_res.data:
+            raise HTTPException(status_code=404, detail="Registro o folio no encontrado")
+
+        folio_update_data: Dict[str, Any] = {
+            "status": target_status,
+            "updated_at": now_iso
+        }
+        if target_status == "verified":
+            folio_update_data["verified_at"] = now_iso
+        elif target_status in ("revision", "pending"):
+            folio_update_data["locked_at"] = None
+
+        if request.metadata is not None:
+            folio_update_data["metadata"] = request.metadata
+
+        try:
+            supabase.table("folios").update({**folio_update_data, "last_modified_by": caller_id}).eq("id", target_folio_id).eq("tenant_id", tenant_id).execute()
+        except Exception:
+            supabase.table("folios").update(folio_update_data).eq("id", target_folio_id).eq("tenant_id", tenant_id).execute()
+
+        # Sincronizar también entradas asociadas en folio_entries si existen
+        try:
+            supabase.table("folio_entries").update({
+                "status": target_status,
+                "updated_at": now_iso
+            }).eq("folio_id", target_folio_id).eq("tenant_id", tenant_id).execute()
+        except Exception as sync_err:
+            print(f"Notice syncing folio_entries status: {sync_err}")
+
+        return {
+            "status": "success",
+            "new_status": target_status,
+            "verified_at": now_iso if target_status == "verified" else None
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in update_record_status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.patch("/api/v1/records/{folio_id}")
 async def update_record_metadata(
@@ -2265,30 +2622,80 @@ async def update_record_metadata(
         if role == "digitizer":
             raise HTTPException(status_code=403, detail="Permiso denegado: rol no autorizado para editar")
 
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # 1. Verificar si folio_id corresponde primero a una partida en folio_entries
+        entry_res = None
+        try:
+            entry_res = supabase.table("folio_entries").select("*").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+        except Exception:
+            entry_res = None
+
+        if entry_res and entry_res.data:
+            entry = entry_res.data[0]
+            parent_folio_id = str(entry.get("folio_id") or request.folio_id or "")
+
+            existing_meta = entry.get("metadata") or {}
+            new_meta = request.metadata if request.metadata is not None else existing_meta
+            if isinstance(existing_meta, dict) and isinstance(existing_meta.get("data"), dict) and isinstance(new_meta, dict) and "data" not in new_meta:
+                updated_entry_meta = {**existing_meta, **new_meta, "data": {**existing_meta["data"], **new_meta}}
+            else:
+                updated_entry_meta = new_meta
+
+            entry_update_payload: Dict[str, Any] = {
+                "metadata": updated_entry_meta,
+                "updated_at": now_iso
+            }
+            if request.status:
+                entry_update_payload["status"] = request.status
+
+            e_upd = supabase.table("folio_entries").update(entry_update_payload).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+            if parent_folio_id:
+                parent_update: Dict[str, Any] = {
+                    "metadata": new_meta,
+                    "updated_at": now_iso
+                }
+                if request.status:
+                    parent_update["status"] = request.status
+                    if request.status == "verified":
+                        parent_update["verified_at"] = now_iso
+                try:
+                    supabase.table("folios").update({**parent_update, "last_modified_by": caller_id}).eq("id", parent_folio_id).eq("tenant_id", tenant_id).execute()
+                except Exception:
+                    supabase.table("folios").update(parent_update).eq("id", parent_folio_id).eq("tenant_id", tenant_id).execute()
+
+            return {"status": "success", "data": (e_upd.data[0] if e_upd and e_upd.data else entry_update_payload)}
+
+        # 2. Flujo estándar sobre la tabla folios
         folio_res = user_client.table("folios").select("*, batches(uploaded_by)").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
         if not folio_res.data:
             raise HTTPException(status_code=404, detail="Folio no encontrado")
 
         folio = folio_res.data[0]
         batch_rel = folio.get("batches") or {}
-        batch_uploader = batch_rel.get("uploaded_by")
+        batch_uploader = batch_rel.get("uploaded_by") if isinstance(batch_rel, dict) else None
 
-        if role == "archivist" and batch_uploader != caller_id:
+        if role == "archivist" and batch_uploader and batch_uploader != caller_id:
             raise HTTPException(status_code=403, detail="Permiso denegado: solo puedes editar registros de lotes que subiste")
 
-        if folio.get("status") == "in_progress":
+        if folio.get("status") == "in_progress" and not request.status:
             raise HTTPException(status_code=409, detail="El documento está siendo indexado en este momento")
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        update_data = {
-            "metadata": request.metadata,
+        update_data: Dict[str, Any] = {
             "updated_at": now_iso
         }
+        if request.metadata is not None:
+            update_data["metadata"] = request.metadata
+        if request.status:
+            update_data["status"] = request.status
+            if request.status == "verified":
+                update_data["verified_at"] = now_iso
 
         try:
-            res = user_client.table("folios").update({**update_data, "last_modified_by": caller_id}).eq("id", folio_id).execute()
+            res = user_client.table("folios").update({**update_data, "last_modified_by": caller_id}).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
         except Exception:
-            res = user_client.table("folios").update(update_data).eq("id", folio_id).execute()
+            res = user_client.table("folios").update(update_data).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
 
         if not res.data:
             raise HTTPException(status_code=500, detail="Error al actualizar metadatos del folio")
@@ -2316,6 +2723,19 @@ async def delete_record(
         caller_id = auth["user_id"]
         tenant_id = auth["tenant_id"]
 
+        # Primero verificar si es una partida individual en folio_entries
+        try:
+            entry_check = supabase.table("folio_entries").select("id, folio_id").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+            if entry_check and entry_check.data:
+                supabase.table("folio_entries").delete().eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+                return {
+                    "status": "success",
+                    "message": "Partida eliminada exitosamente",
+                    "id": folio_id
+                }
+        except Exception:
+            pass
+
         folio_res = (
             supabase.table("folios")
             .select("id, tenant_id, batches(uploaded_by)")
@@ -2332,7 +2752,7 @@ async def delete_record(
         if role == "archivist":
             batch_rel = folio.get("batches") or {}
             uploaded_by = batch_rel.get("uploaded_by") if isinstance(batch_rel, dict) else None
-            if uploaded_by != caller_id:
+            if uploaded_by and uploaded_by != caller_id:
                 raise HTTPException(
                     status_code=403,
                     detail="Permiso denegado: solo puedes eliminar registros de lotes que subiste"
@@ -2400,6 +2820,9 @@ def extract_dynamic_columns(folios: list, template_fields: Optional[list]) -> tu
 
 @app.get("/api/v1/records/export")
 async def export_records(
+    series: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    status: Optional[str] = "all",
     batch_id: Optional[str] = None,
     search: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -2417,7 +2840,11 @@ async def export_records(
         tenant_id = auth["tenant_id"]
         user_client = auth["user_client"]
 
-        query = supabase.table("folios").select("*, batches(id, template_id, uploaded_by)").eq("tenant_id", tenant_id).in_("status", ["completed", "in_progress"])
+        query = supabase.table("folios").select("*, batches(id, template_id, uploaded_by)").eq("tenant_id", tenant_id)
+        if status and status.strip().lower() not in ("all", "todos", ""):
+            query = query.eq("status", status.strip().lower())
+        if folder_id and folder_id.strip().lower() not in ("all", "todos", "", "unclassified"):
+            query = query.eq("folder_id", folder_id.strip())
         if batch_id:
             query = query.eq("batch_id", batch_id)
         if start_date:
@@ -2474,14 +2901,14 @@ async def export_records(
             batch_rel_id = batch_info.get("id") or folio.get("batch_id")
             batch_name = f"Lote {str(batch_rel_id)[:8]}" if batch_rel_id else ""
             verified_formatted = format_export_datetime(folio.get("verified_at"))
-            status = folio.get("status", "")
+            f_status = folio.get("status", "")
 
             row = [
                 folio.get("id", ""),
                 file_name,
                 batch_name,
                 verified_formatted,
-                status
+                f_status
             ]
 
             meta = folio.get("metadata") or {}
