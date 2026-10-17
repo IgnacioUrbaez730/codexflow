@@ -9,7 +9,8 @@ import {
   Users, 
   BarChart3, 
   PanelLeftClose, 
-  PanelLeftOpen 
+  PanelLeftOpen,
+  ShieldCheck
 } from 'lucide-react';
 import { useSidebar } from '../context/SidebarContext';
 import SidebarItem from './SidebarItem';
@@ -25,14 +26,23 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
   const { isCollapsed, isMobileOpen, toggleCollapse, closeMobile } = useSidebar();
 
   const isDigitizer = role === 'digitizer';
+  const isEvaluator = role === 'evaluator';
 
   const links = isDigitizer
     ? [
         { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
         { href: `/${subdomain}/metrics`, label: 'Mis Métricas', icon: BarChart3 },
       ]
+    : isEvaluator
+    ? [
+        { href: `/${subdomain}/dashboard`, label: 'Dashboard', icon: LayoutDashboard },
+        { href: `/${subdomain}/evaluacion`, label: 'Mesa de Evaluación', icon: ShieldCheck },
+        { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
+        { href: `/${subdomain}/records`, label: 'Registros', icon: BookOpen },
+      ]
     : [
         { href: `/${subdomain}/dashboard`, label: 'Dashboard', icon: LayoutDashboard },
+        { href: `/${subdomain}/evaluacion`, label: 'Mesa de Evaluación', icon: ShieldCheck },
         { href: `/${subdomain}/ingest`, label: 'Ingesta/Dudosos', icon: UploadCloud },
         { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
         { href: `/${subdomain}/records`, label: 'Registros', icon: BookOpen },
@@ -124,7 +134,9 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
           {!isCollapsed && (
             <div className="px-2 text-xs text-gray-400 flex items-center justify-between">
               <span>Rol:</span>
-              <span className="font-semibold text-gray-300 capitalize">{role}</span>
+              <span className="font-semibold text-gray-300 capitalize">
+                {role === 'evaluator' ? 'Evaluador de Calidad' : role}
+              </span>
             </div>
           )}
           <div className={isCollapsed ? 'flex justify-center' : 'w-full'}>

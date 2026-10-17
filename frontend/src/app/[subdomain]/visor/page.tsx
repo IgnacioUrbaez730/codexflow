@@ -1594,6 +1594,79 @@ export default function VisorDual() {
             </div>
           </div>
 
+          {/* SPEC-017 T009: Banner de Observación de Control de Calidad / Devolución / Escalamiento */}
+          {(() => {
+            const noteText =
+              folio?.metadata?.review_notes ||
+              folio?.review_notes ||
+              entries[activeEntryIndex]?.metadata?.review_notes ||
+              "";
+            if (!noteText || !String(noteText).trim()) return null;
+
+            const isReturned = Boolean(
+              folio?.metadata?.priority_returned ||
+                entries[activeEntryIndex]?.metadata?.priority_returned
+            );
+            const isEscalated = Boolean(
+              folio?.metadata?.escalated_to_archivist ||
+                entries[activeEntryIndex]?.metadata?.escalated_to_archivist
+            );
+            const returnedBy =
+              folio?.metadata?.returned_by ||
+              entries[activeEntryIndex]?.metadata?.returned_by ||
+              "Evaluador de Calidad";
+            const escalatedBy =
+              folio?.metadata?.escalated_by ||
+              entries[activeEntryIndex]?.metadata?.escalated_by ||
+              "Evaluador de Calidad";
+
+            return (
+              <div
+                className={`px-4 py-3 border-b flex items-start gap-3 text-xs ${
+                  isReturned
+                    ? "bg-rose-50 border-rose-200 text-rose-900"
+                    : isEscalated
+                    ? "bg-orange-50 border-orange-200 text-orange-900"
+                    : "bg-amber-50 border-amber-200 text-amber-900"
+                }`}
+              >
+                <AlertTriangle
+                  className={`w-5 h-5 shrink-0 mt-0.5 ${
+                    isReturned
+                      ? "text-rose-600"
+                      : isEscalated
+                      ? "text-orange-600"
+                      : "text-amber-600"
+                  }`}
+                />
+                <div className="flex-1 space-y-1">
+                  <div className="font-bold flex flex-wrap items-center gap-2">
+                    {isReturned ? (
+                      <>
+                        <span>↩ Acta Devuelta por el Evaluador para Corrección</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                          Devuelto por: {returnedBy}
+                        </span>
+                      </>
+                    ) : isEscalated ? (
+                      <>
+                        <span>🔔 Folio Escalado al Archivista por el Evaluador</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-orange-100 text-orange-800 border border-orange-300">
+                          Escalado por: {escalatedBy}
+                        </span>
+                      </>
+                    ) : (
+                      <span>⚠️ Observación de Control de Calidad:</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-medium leading-relaxed">
+                    &ldquo;{String(noteText).trim()}&rdquo;
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Partidas Tab Selector (T04-FE-01) */}
           <div className="border-b bg-gray-100/70 px-4 py-2.5 flex items-center justify-between gap-2 overflow-x-auto">
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">

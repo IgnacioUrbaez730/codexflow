@@ -21,12 +21,16 @@ interface PreExportSummary {
   tome_name: string;
   folder_type: string;
   total_folios: number;
+  verified_folios?: number;
   total_entries: number;
   completed_entries: number;
+  all_completed_entries?: number;
+  verified_entries?: number;
   revision_entries: number;
   pending_entries: number;
   has_revisions: boolean;
   doubtful_folios_count: number;
+  only_verified?: boolean;
   ready_for_export: boolean;
 }
 
@@ -48,6 +52,7 @@ export default function ExportFamilySearchModal({
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [summary, setSummary] = useState<PreExportSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [onlyVerified, setOnlyVerified] = useState<boolean>(false);
 
   // Selector de tipo de paquete
   // 'data_only': Paquete rápido con Excel, CSV, GEDCOM y Manifiesto
@@ -72,9 +77,12 @@ export default function ExportFamilySearchModal({
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
         };
-        const res = await fetch(`/api/v1/folders/${folder?.id}/pre-export-summary`, {
-          headers,
-        });
+        const res = await fetch(
+          `/api/v1/folders/${folder?.id}/pre-export-summary?only_verified=${onlyVerified}`,
+          {
+            headers,
+          }
+        );
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -101,7 +109,7 @@ export default function ExportFamilySearchModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, folder, authToken, tenantId]);
+  }, [isOpen, folder, authToken, tenantId, onlyVerified]);
 
   if (!isOpen || !folder) return null;
 
@@ -117,7 +125,7 @@ export default function ExportFamilySearchModal({
       };
 
       const res = await fetch(
-        `/api/v1/folders/${folder.id}/export-familysearch?include_images=${includeImages}`,
+        `/api/v1/folders/${folder.id}/export-familysearch?include_images=${includeImages}&only_verified=${onlyVerified}`,
         {
           headers,
         }
@@ -255,13 +263,36 @@ export default function ExportFamilySearchModal({
                   </div>
                 </div>
 
+                {/* SPEC-017 T010: Switch only_verified */}
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 transition cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={onlyVerified}
+                    onChange={(e) => setOnlyVerified(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="flex-1 text-xs">
+                    <div className="font-bold text-indigo-950 flex items-center justify-between gap-2">
+                      <span>Exportar exclusivamente actas Verificadas por Evaluador (100% auditadas)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 shrink-0">
+                        ✔ {summary?.verified_entries ?? 0} actas ({summary?.verified_folios ?? 0} folios)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-indigo-700 mt-0.5">
+                      Al activar esta opción, solo se incluirán las partidas con sello Gold Standard verificadas en la Mesa de Arbitraje.
+                    </p>
+                  </div>
+                </label>
+
                 {/* Zero completed entries warning (T03-FE-05) */}
                 {summary && summary.completed_entries === 0 && (
                   <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-2.5 text-xs text-rose-800">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
                     <div>
                       <strong className="font-semibold text-rose-900">No es posible exportar:</strong>{" "}
-                      El tomo no tiene ninguna partida completada aún. Completa e indexa al menos una partida antes de generar el paquete DIP.
+                      {onlyVerified
+                        ? "El tomo aún no tiene actas Verificadas por Evaluador. Desactiva el filtro estricto o verifica las actas en la Mesa de Evaluación."
+                        : "El tomo no tiene ninguna partida completada aún. Completa e indexa al menos una partida antes de generar el paquete DIP."}
                     </div>
                   </div>
                 )}

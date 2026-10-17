@@ -134,7 +134,7 @@ export default function UsersPage() {
               required
             />
           </div>
-          <div className="w-48">
+          <div className="w-56">
             <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
             <select 
               value={inviteRole} 
@@ -143,6 +143,7 @@ export default function UsersPage() {
             >
               <option value="admin">Admin</option>
               <option value="archivist">Archivista</option>
+              <option value="evaluator">Evaluador de Calidad</option>
               <option value="digitizer">Digitador</option>
             </select>
           </div>
@@ -197,19 +198,44 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map(u => (
+              {filteredUsers.map(u => {
+                const roleBadgeClass =
+                  u.role === 'evaluator'
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                    : u.role === 'archivist'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : u.role === 'admin'
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-blue-50 text-blue-700 border-blue-200';
+
+                const roleLabel =
+                  u.role === 'evaluator'
+                    ? 'Evaluador de Calidad'
+                    : u.role === 'archivist'
+                    ? 'Archivista'
+                    : u.role === 'admin'
+                    ? 'Admin'
+                    : 'Digitador';
+
+                return (
                 <tr key={u.user_id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="p-4">{u.email}</td>
                   <td className="p-4">
-                    <select 
-                      value={u.role}
-                      onChange={e => updateUser(u.user_id, { role: e.target.value })}
-                      className="border rounded p-1"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="archivist">Archivista</option>
-                      <option value="digitizer">Digitador</option>
-                    </select>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleBadgeClass}`}>
+                        {roleLabel}
+                      </span>
+                      <select 
+                        value={u.role}
+                        onChange={e => updateUser(u.user_id, { role: e.target.value })}
+                        className="border rounded p-1 text-sm bg-white"
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="archivist">Archivista</option>
+                        <option value="evaluator">Evaluador de Calidad</option>
+                        <option value="digitizer">Digitador</option>
+                      </select>
+                    </div>
                   </td>
                   <td className="p-4">{u.folios_today || 0}</td>
                   <td className="p-4">
@@ -226,7 +252,8 @@ export default function UsersPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {filteredUsers.length === 0 && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-500">No se encontraron usuarios</td>

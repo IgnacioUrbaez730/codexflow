@@ -465,7 +465,20 @@ export default function IngestHub() {
     fetchUser();
     fetchTemplates();
     fetchFoldersTree();
+    fetchDudosos();
   }, [fetchFoldersTree, supabase]);
+
+  const escalatedFoliosCount = useMemo(() => {
+    return revisionFolios.filter((f) => Boolean(f.metadata?.escalated_to_archivist)).length;
+  }, [revisionFolios]);
+
+  const sortedRevisionFolios = useMemo(() => {
+    return [...revisionFolios].sort((a, b) => {
+      const aEsc = Boolean(a.metadata?.escalated_to_archivist) ? 1 : 0;
+      const bEsc = Boolean(b.metadata?.escalated_to_archivist) ? 1 : 0;
+      return bEsc - aEsc;
+    });
+  }, [revisionFolios]);
 
   useEffect(() => {
     if (activeTab === "upload") {
@@ -750,6 +763,11 @@ export default function IngestHub() {
           onClick={() => setActiveTab("revision")}
         >
           <span>Dudosos</span>
+          {escalatedFoliosCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-300">
+              🔔 {escalatedFoliosCount}
+            </span>
+          )}
         </button>
         {userRole !== "archivist" && (
           <button
@@ -1321,11 +1339,24 @@ export default function IngestHub() {
       {activeTab === "revision" && (
         <div>
           <h2 className="text-2xl font-semibold mb-4">Folios Dudosos (Revisión)</h2>
+
+          {escalatedFoliosCount > 0 && (
+            <div className="mb-6 p-4 bg-orange-50 border border-orange-300 rounded-xl flex items-start gap-3 text-orange-950 shadow-2xs">
+              <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+              <div className="text-sm font-medium">
+                🔔 Atención Archivista: Tienes{" "}
+                <strong>{escalatedFoliosCount}</strong> folio(s) escalados por el Evaluador de
+                Calidad que requieren tu dictamen archivístico.
+              </div>
+            </div>
+          )}
+
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b">
                 <th className="py-2">Folio ID</th>
                 <th>Lote / Plantilla</th>
+                <th>Estado / Dictamen de Calidad</th>
                 <th>Fecha</th>
                 <th>Acción</th>
               </tr>
@@ -1333,18 +1364,18 @@ export default function IngestHub() {
             <tbody>
               {loadingRevision ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-gray-500">
+                  <td colSpan={5} className="py-4 text-gray-500">
                     Cargando folios en revisión...
                   </td>
                 </tr>
-              ) : revisionFolios.length === 0 ? (
+              ) : sortedRevisionFolios.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-gray-500">
+                  <td colSpan={5} className="py-4 text-gray-500">
                     No hay folios en revisión.
                   </td>
                 </tr>
               ) : (
-                revisionFolios.map((folio) => {
+                sortedRevisionFolios.map((folio) => {
                   const batchInfo = folio.batches;
                   const templateName = batchInfo?.templates?.name;
                   const batchDisplay = templateName
@@ -1355,20 +1386,70 @@ export default function IngestHub() {
                   const dateDisplay = folio.created_at
                     ? new Date(folio.created_at).toLocaleString()
                     : "-";
+                  const isEscalated = Boolean(folio.metadata?.escalated_to_archivist);
+                  const reviewNotes = folio.metadata?.review_notes || "";
+                  const escalatedBy = folio.metadata?.escalated_by || "Evaluador de Calidad";
+
                   return (
-                    <tr key={folio.id} className="border-b">
-                      <td className="py-2 font-mono text-sm" title={folio.id}>
-                        {folio.id ? `${folio.id.slice(0, 8)}...` : "-"}
+                    <tr
+                      key={folio.id}
+                      className={`border-b ${isEscalated ? "bg-orange-50/40" : ""}`}
+                    >
+                      <td className="py-3 font-mono text-sm" title={folio.id}>
+                        <div>{folio.id ? `${folio.id.slice(0, 8)}...` : "-"}</div>
+                        {folio.canonical_filename && (
+                          <div className="text-xs text-gray-500">{folio.canonical_filename}</div>
+                        )}
                       </td>
-                      <td>{batchDisplay}</td>
-                      <td>{dateDisplay}</td>
-                      <td>
-                        <button
-                          onClick={() => router.push(`/${subdomain}/visor?folio_id=${folio.id}`)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
-                        >
-                          Corregir
-                        </button>
+                      <td className="py-3">{batchDisplay}</td>
+                      <td className="py-3 max-w-md">
+                        {isEscalated ? (
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-300">
+                                🔔 Escalado al Archivista
+                              </span>
+                              <span className="text-xs text-gray-600">
+                                por <strong>{escalatedBy}</strong>
+                              </span>
+                            </div>
+                            {reviewNotes && (
+                              <p className="text-xs text-orange-900 bg-orange-100/60 px-2.5 py-1 rounded border border-orange-200 italic">
+                                &ldquo;{reviewNotes}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                              Dudoso (Digitador)
+                            </span>
+                            {reviewNotes && (
+                              <p className="text-xs text-gray-600 italic">
+                                &ldquo;{reviewNotes}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 text-sm text-gray-600">{dateDisplay}</td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => router.push(`/${subdomain}/visor?folio_id=${folio.id}`)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors cursor-pointer"
+                          >
+                            Corregir en Visor
+                          </button>
+                          <button
+                            onClick={() =>
+                              router.push(`/${subdomain}/evaluacion?folio_id=${folio.id}`)
+                            }
+                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded transition-colors cursor-pointer"
+                          >
+                            Arbitrar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

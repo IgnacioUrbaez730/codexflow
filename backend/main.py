@@ -775,36 +775,89 @@ def ensure_folio_ai_predictions(
     return predictions
 
 
+def _resolve_user_identity(user_id: Optional[str]) -> str:
+    if not user_id:
+        return "Operador"
+    try:
+        prof_res = supabase.table("user_profiles").select("first_name, last_name").eq("user_id", user_id).execute()
+        if prof_res.data and len(prof_res.data) > 0:
+            p = prof_res.data[0]
+            full_name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip()
+            if full_name:
+                return full_name
+    except Exception:
+        pass
+    try:
+        u_res = supabase.auth.admin.get_user_by_id(user_id)
+        if u_res and u_res.user and u_res.user.email:
+            return u_res.user.email
+    except Exception:
+        pass
+    return str(user_id)
+
+
 @app.post("/api/v1/folios/get_next")
 async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         user_client = auth["user_client"]
         tenant_id = auth["tenant_id"]
+        user_id = auth.get("user_id")
 
         folio_data = None
+        # 1. Priorizar folios en pending con metadata.priority_returned == True (devueltos por Evaluador)
         try:
-            in_prog_res = (
+            pending_res = (
                 supabase.table("folios")
                 .select("*")
                 .eq("tenant_id", tenant_id)
-                .eq("status", "in_progress")
-                .order("locked_at", desc=True)
+                .eq("status", "pending")
+                .order("created_at", desc=False)
                 .execute()
             )
-            if (
-                isinstance(in_prog_res.data, list)
-                and len(in_prog_res.data) > 0
-                and isinstance(in_prog_res.data[0], dict)
-                and in_prog_res.data[0].get("status") == "in_progress"
-            ):
-                folio_data = in_prog_res.data[0]
-                now_iso = datetime.now(timezone.utc).isoformat()
-                supabase.table("folios").update({"locked_at": now_iso}).eq(
-                    "id", folio_data["id"]
-                ).eq("tenant_id", tenant_id).execute()
-                folio_data["locked_at"] = now_iso
-        except Exception as check_err:
-            print(f"Notice checking existing in_progress folios: {check_err}")
+            if isinstance(pending_res.data, list):
+                for pf in pending_res.data:
+                    pf_meta = pf.get("metadata")
+                    if isinstance(pf_meta, dict) and bool(pf_meta.get("priority_returned")):
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        upd_payload = {
+                            "status": "in_progress",
+                            "locked_at": now_iso,
+                        }
+                        try:
+                            supabase.table("folios").update({**upd_payload, "locked_by": user_id}).eq("id", pf["id"]).eq("tenant_id", tenant_id).execute()
+                        except Exception:
+                            supabase.table("folios").update(upd_payload).eq("id", pf["id"]).eq("tenant_id", tenant_id).execute()
+                        pf["status"] = "in_progress"
+                        pf["locked_at"] = now_iso
+                        folio_data = pf
+                        break
+        except Exception as prio_err:
+            print(f"Notice checking priority_returned folios in get_next_folio: {prio_err}")
+
+        if not folio_data:
+            try:
+                in_prog_res = (
+                    supabase.table("folios")
+                    .select("*")
+                    .eq("tenant_id", tenant_id)
+                    .eq("status", "in_progress")
+                    .order("locked_at", desc=True)
+                    .execute()
+                )
+                if (
+                    isinstance(in_prog_res.data, list)
+                    and len(in_prog_res.data) > 0
+                    and isinstance(in_prog_res.data[0], dict)
+                    and in_prog_res.data[0].get("status") == "in_progress"
+                ):
+                    folio_data = in_prog_res.data[0]
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    supabase.table("folios").update({"locked_at": now_iso}).eq(
+                        "id", folio_data["id"]
+                    ).eq("tenant_id", tenant_id).execute()
+                    folio_data["locked_at"] = now_iso
+            except Exception as check_err:
+                print(f"Notice checking existing in_progress folios: {check_err}")
 
         if not folio_data:
             res = supabase.rpc("get_next_folio", {"p_tenant_id": tenant_id}).execute()
@@ -859,6 +912,27 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
         folio_data["template_id"] = template_id
         folio_data["template"] = template_obj
 
+        # Attach entries and inherited_context for priority_returned / multi-entry compatibility
+        try:
+            f_entries_res = (
+                supabase.table("folio_entries")
+                .select("*")
+                .eq("folio_id", active_folio_id)
+                .eq("tenant_id", tenant_id)
+                .order("entry_number")
+                .execute()
+            )
+            folio_data["entries"] = f_entries_res.data or []
+        except Exception:
+            folio_data["entries"] = []
+
+        try:
+            folio_data["inherited_context"] = _resolve_folder_inherited_context(
+                supabase, folio_data.get("folder_id"), tenant_id
+            )
+        except Exception:
+            folio_data["inherited_context"] = {}
+
         if folio_data.get("r2_url"):
             try:
                 view_url = s3_client.generate_presigned_url(
@@ -885,7 +959,7 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
 async def release_folio(folio_id: str, auth: Dict[str, Any] = Depends(get_auth_context)):
     try:
         role = auth.get("role")
-        if role not in ["admin", "archivist", "superadmin"]:
+        if role not in ["admin", "archivist", "evaluator", "superadmin"]:
             raise HTTPException(status_code=403, detail="No tienes permisos para liberar este folio")
 
         tenant_id = auth["tenant_id"]
@@ -1070,10 +1144,11 @@ async def get_team(auth: Dict[str, Any] = Depends(get_auth_context)):
         if isinstance(e, HTTPException): raise e
         print(f"Error in get_team: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/users/invite")
 @app.post("/api/v1/team/invite")
 async def invite_team_member(request: TeamInviteRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
     tenant_id = auth["tenant_id"]
-    if request.role not in ["admin", "archivist", "digitizer"]:
+    if request.role not in ["admin", "archivist", "evaluator", "digitizer"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     try:
         res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
@@ -1107,6 +1182,7 @@ class UpdateTeamMemberRequest(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
 
+@app.patch("/api/v1/team/{target_user_id}/role")
 @app.patch("/api/v1/team/{target_user_id}")
 async def update_team_member(target_user_id: str, request: UpdateTeamMemberRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
     tenant_id = auth["tenant_id"]
@@ -1118,6 +1194,10 @@ async def update_team_member(target_user_id: str, request: UpdateTeamMemberReque
         
     if caller_id == target_user_id:
         raise HTTPException(status_code=400, detail="No puedes modificar tu propio rol o estado")
+
+    valid_roles = ["admin", "archivist", "evaluator", "digitizer"]
+    if request.role is not None and request.role not in valid_roles:
+        raise HTTPException(status_code=400, detail="Invalid role")
         
     try:
         # Prevent demoting or deactivating the last active admin
@@ -1559,9 +1639,11 @@ async def auth_me(authorization: str = Header(None)):
         if role == "superadmin":
             return {"role": "superadmin", "redirect_url": "/superadmin"}
             
-        if role in ["admin", "digitizer", "archivist"] and tenant_name:
+        if role in ["admin", "digitizer", "archivist", "evaluator"] and tenant_name:
             if not has_completed:
                 return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": "/welcome"}
+            if role == "evaluator":
+                return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/evaluacion"}
             return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/dashboard"}
             
         return {"role": role, "redirect_url": "/pending"}
@@ -1868,13 +1950,25 @@ async def save_folio(request: FolioSaveRequest, auth: Dict[str, Any] = Depends(g
                         )
         
         # Update folio
+        now_iso = datetime.now(timezone.utc).isoformat()
+        digitizer_identity = _resolve_user_identity(user_id)
+        existing_f_meta = folio.get("metadata") if isinstance(folio.get("metadata"), dict) else {}
+        merged_folio_meta = {
+            **existing_f_meta,
+            **(request.metadata if isinstance(request.metadata, dict) else {}),
+            "digitized_by": digitizer_identity,
+            "digitized_at": now_iso,
+        }
+        if request.status == "completed":
+            merged_folio_meta["priority_returned"] = False
+
         update_data = {
-            "metadata": request.metadata,
+            "metadata": merged_folio_meta,
             "status": request.status,
             "locked_at": None
         }
         if request.status == "completed":
-            update_data["verified_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["verified_at"] = now_iso
             
         res = (
             supabase.table("folios")
@@ -1939,7 +2033,8 @@ async def get_revision_folios(auth: Dict[str, Any] = Depends(get_auth_context)):
             user_id = auth.get("user_id")
             folios = [
                 f for f in folios
-                if f.get("batches") and f["batches"].get("uploaded_by") == user_id
+                if (f.get("batches") and f["batches"].get("uploaded_by") == user_id)
+                or (isinstance(f.get("metadata"), dict) and bool(f["metadata"].get("escalated_to_archivist")))
             ]
             
         return {"status": "success", "data": folios}
@@ -2331,7 +2426,12 @@ async def get_records(
                         "r2_url": f.get("r2_url"),
                         "sequence_order": f.get("sequence_order") or 1,
                         "created_at": entry.get("created_at") or f.get("created_at"),
-                        "verified_at": f.get("verified_at") or entry.get("updated_at") or entry.get("created_at")
+                        "verified_at": f.get("verified_at") or entry.get("updated_at") or entry.get("created_at"),
+                        "review_notes": f_meta.get("review_notes") or combined_meta.get("review_notes") or "",
+                        "escalated_to_archivist": bool(f_meta.get("escalated_to_archivist") or combined_meta.get("escalated_to_archivist")),
+                        "escalated_by": f_meta.get("escalated_by") or combined_meta.get("escalated_by"),
+                        "digitized_by": f_meta.get("digitized_by") or combined_meta.get("digitized_by"),
+                        "verified_by": f_meta.get("verified_by") or combined_meta.get("verified_by"),
                     })
             else:
                 row_status = _normalize_record_status(f.get("status") or "pending")
@@ -2378,7 +2478,12 @@ async def get_records(
                     "r2_url": f.get("r2_url"),
                     "sequence_order": f.get("sequence_order") or 1,
                     "created_at": f.get("created_at"),
-                    "verified_at": f.get("verified_at") or f.get("updated_at") or f.get("created_at")
+                    "verified_at": f.get("verified_at") or f.get("updated_at") or f.get("created_at"),
+                    "review_notes": f_meta.get("review_notes") or combined_meta.get("review_notes") or "",
+                    "escalated_to_archivist": bool(f_meta.get("escalated_to_archivist") or combined_meta.get("escalated_to_archivist")),
+                    "escalated_by": f_meta.get("escalated_by") or combined_meta.get("escalated_by"),
+                    "digitized_by": f_meta.get("digitized_by") or combined_meta.get("digitized_by"),
+                    "verified_by": f_meta.get("verified_by") or combined_meta.get("verified_by"),
                 })
 
         # Paso E — Filtrar por Búsqueda Multicriterio (search) y Fechas Históricas (start_date, end_date)
@@ -2511,6 +2616,7 @@ async def update_record_status(
 
         tenant_id = auth["tenant_id"]
         caller_id = auth["user_id"]
+        caller_identity = _resolve_user_identity(caller_id)
 
         target_status = (request.status or "").strip().lower()
         if target_status not in ("verified", "completed", "revision", "pending", "in_progress"):
@@ -2533,19 +2639,46 @@ async def update_record_status(
                 "status": target_status,
                 "updated_at": now_iso
             }
-            if request.metadata is not None:
-                existing_meta = entry.get("metadata") or {}
-                if isinstance(existing_meta, dict) and isinstance(existing_meta.get("data"), dict):
-                    entry_update["metadata"] = {**existing_meta, "data": {**existing_meta["data"], **request.metadata}}
+            existing_meta = dict(entry.get("metadata") or {}) if isinstance(entry.get("metadata"), dict) else {}
+            if request.metadata is not None and isinstance(request.metadata, dict):
+                if isinstance(existing_meta.get("data"), dict):
+                    existing_meta = {**existing_meta, "data": {**existing_meta["data"], **request.metadata}}
                 else:
-                    entry_update["metadata"] = request.metadata
+                    existing_meta = {**existing_meta, **request.metadata}
+
+            if request.notes is not None and request.notes.strip():
+                existing_meta["review_notes"] = request.notes.strip()
+            if target_status == "revision" and role == "evaluator":
+                existing_meta["escalated_to_archivist"] = True
+                existing_meta["escalated_by"] = caller_identity
+                existing_meta["escalated_at"] = now_iso
+            elif target_status == "verified":
+                existing_meta["verified_by"] = caller_identity
+                existing_meta["verified_at"] = now_iso
+                existing_meta["escalated_to_archivist"] = False
+
+            entry_update["metadata"] = existing_meta
 
             supabase.table("folio_entries").update(entry_update).eq("id", record_id).eq("tenant_id", tenant_id).execute()
 
             if parent_folio_id:
+                parent_f_res = supabase.table("folios").select("metadata").eq("id", parent_folio_id).eq("tenant_id", tenant_id).execute()
+                parent_f_meta = dict(parent_f_res.data[0].get("metadata") or {}) if (parent_f_res.data and isinstance(parent_f_res.data[0].get("metadata"), dict)) else {}
+                if request.notes is not None and request.notes.strip():
+                    parent_f_meta["review_notes"] = request.notes.strip()
+                if target_status == "revision" and role == "evaluator":
+                    parent_f_meta["escalated_to_archivist"] = True
+                    parent_f_meta["escalated_by"] = caller_identity
+                    parent_f_meta["escalated_at"] = now_iso
+                elif target_status == "verified":
+                    parent_f_meta["verified_by"] = caller_identity
+                    parent_f_meta["verified_at"] = now_iso
+                    parent_f_meta["escalated_to_archivist"] = False
+
                 folio_update: Dict[str, Any] = {
                     "status": target_status,
-                    "updated_at": now_iso
+                    "updated_at": now_iso,
+                    "metadata": parent_f_meta,
                 }
                 if target_status == "verified":
                     folio_update["verified_at"] = now_iso
@@ -2569,17 +2702,29 @@ async def update_record_status(
         if not folio_res.data:
             raise HTTPException(status_code=404, detail="Registro o folio no encontrado")
 
+        existing_folio_meta = dict(folio_res.data[0].get("metadata") or {}) if isinstance(folio_res.data[0].get("metadata"), dict) else {}
+        if request.metadata is not None and isinstance(request.metadata, dict):
+            existing_folio_meta = {**existing_folio_meta, **request.metadata}
+        if request.notes is not None and request.notes.strip():
+            existing_folio_meta["review_notes"] = request.notes.strip()
+        if target_status == "revision" and role == "evaluator":
+            existing_folio_meta["escalated_to_archivist"] = True
+            existing_folio_meta["escalated_by"] = caller_identity
+            existing_folio_meta["escalated_at"] = now_iso
+        elif target_status == "verified":
+            existing_folio_meta["verified_by"] = caller_identity
+            existing_folio_meta["verified_at"] = now_iso
+            existing_folio_meta["escalated_to_archivist"] = False
+
         folio_update_data: Dict[str, Any] = {
             "status": target_status,
-            "updated_at": now_iso
+            "updated_at": now_iso,
+            "metadata": existing_folio_meta,
         }
         if target_status == "verified":
             folio_update_data["verified_at"] = now_iso
         elif target_status in ("revision", "pending"):
             folio_update_data["locked_at"] = None
-
-        if request.metadata is not None:
-            folio_update_data["metadata"] = request.metadata
 
         try:
             supabase.table("folios").update({**folio_update_data, "last_modified_by": caller_id}).eq("id", target_folio_id).eq("tenant_id", tenant_id).execute()
@@ -4187,6 +4332,7 @@ async def get_folio_entries(
 
 
 @app.post("/api/v1/folios/{folio_id}/entries")
+@app.post("/api/v1/folios/{folio_id}/submit")
 async def save_folio_entries(
     folio_id: str,
     request: BatchSaveEntriesRequest,
@@ -4200,16 +4346,24 @@ async def save_folio_entries(
     if not folio_res.data:
         raise HTTPException(status_code=404, detail="Folio no encontrado")
 
+    folio_obj = folio_res.data[0]
+    existing_f_meta = folio_obj.get("metadata") if isinstance(folio_obj.get("metadata"), dict) else {}
+
     saved_entries = []
     now_iso = datetime.now(timezone.utc).isoformat()
+    digitizer_identity = _resolve_user_identity(user_id)
 
     for entry in request.entries:
+        e_meta = dict(entry.metadata) if isinstance(entry.metadata, dict) else {}
+        e_meta["digitized_by"] = digitizer_identity
+        e_meta["digitized_at"] = now_iso
+
         entry_payload = {
             "tenant_id": tenant_id,
             "folio_id": folio_id,
             "entry_number": entry.entry_number,
             "status": entry.status or "pending",
-            "metadata": entry.metadata,
+            "metadata": e_meta,
             "bounding_box": entry.bounding_box,
             "folio_number": entry.folio_number,
             "folio_side": entry.folio_side or "recto",
@@ -4236,19 +4390,32 @@ async def save_folio_entries(
             else:
                 saved_entries.append(entry_payload)
 
+    first_entry_meta = dict(request.entries[0].metadata) if (request.entries and isinstance(request.entries[0].metadata, dict)) else {}
+    merged_folio_meta = {
+        **existing_f_meta,
+        **first_entry_meta,
+        "digitized_by": digitizer_identity,
+        "digitized_at": now_iso,
+    }
+
     if request.final_status == "completed":
+        merged_folio_meta["priority_returned"] = False
         folio_update: Dict[str, Any] = {
             "status": "completed",
             "locked_at": None,
-            "verified_at": now_iso
+            "verified_at": now_iso,
+            "metadata": merged_folio_meta,
         }
-        if request.entries:
-            folio_update["metadata"] = request.entries[0].metadata
         client.table("folios").update(folio_update).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
     elif request.final_status:
         client.table("folios").update({
             "status": request.final_status,
-            "locked_at": None
+            "locked_at": None,
+            "metadata": merged_folio_meta,
+        }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+    else:
+        client.table("folios").update({
+            "metadata": merged_folio_meta,
         }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
 
     return {
@@ -4320,6 +4487,7 @@ import zipfile
 @app.get("/api/v1/folders/{folder_id}/pre-export-summary")
 async def get_folder_pre_export_summary(
     folder_id: str,
+    only_verified: bool = Query(False, description="Si es True, filtra estrictamente actas con status == 'verified'"),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     tenant_id = auth["tenant_id"]
@@ -4334,13 +4502,15 @@ async def get_folder_pre_export_summary(
     folder_name = folder.get("name", "Tomo")
 
     # 2. Obtener todos los folios asignados a esta carpeta
-    folios_res = client.table("folios").select("id, folder_id, status, sequence_order, original_filename, canonical_filename").eq("folder_id", folder_id).execute()
+    folios_res = client.table("folios").select("id, folder_id, status, sequence_order, original_filename, canonical_filename").eq("folder_id", folder_id).eq("tenant_id", tenant_id).execute()
     folios = folios_res.data or []
     folio_ids = [f["id"] for f in folios]
 
     total_folios = len(folios)
+    verified_folios = sum(1 for f in folios if (f.get("status") or "").lower() == "verified")
     total_entries = 0
     completed_entries = 0
+    verified_entries = 0
     revision_entries = 0
     pending_entries = 0
     doubtful_folios = []
@@ -4353,8 +4523,11 @@ async def get_folder_pre_export_summary(
         # Si no hay entradas en folio_entries, sintetizar desde folios
         if not entries:
             for f in folios:
-                f_status = f.get("status") or "pending"
-                if f_status == "completed":
+                f_status = (f.get("status") or "pending").lower()
+                if f_status == "verified":
+                    verified_entries += 1
+                    completed_entries += 1
+                elif f_status == "completed":
                     completed_entries += 1
                 elif f_status in ("revision", "doubtful", "dudoso"):
                     revision_entries += 1
@@ -4366,20 +4539,29 @@ async def get_folder_pre_export_summary(
             total_entries = len(entries)
             folio_obj_map = {f["id"]: f for f in folios}
             seen_doubtful_folios = set()
+            seen_verified_folios = set()
             for e in entries:
                 e_status = (e.get("status") or "pending").lower()
-                if e_status == "completed":
+                fid = e.get("folio_id")
+                if e_status == "verified":
+                    verified_entries += 1
+                    completed_entries += 1
+                    if fid:
+                        seen_verified_folios.add(fid)
+                elif e_status == "completed":
                     completed_entries += 1
                 elif e_status in ("revision", "doubtful", "dudoso"):
                     revision_entries += 1
-                    fid = e.get("folio_id")
                     if fid and fid not in seen_doubtful_folios:
                         seen_doubtful_folios.add(fid)
                         doubtful_folios.append(folio_obj_map.get(fid, {"id": fid}))
                 else:
                     pending_entries += 1
+            if seen_verified_folios:
+                verified_folios = max(verified_folios, len(seen_verified_folios))
 
     has_revisions = revision_entries > 0
+    exportable_entries = verified_entries if only_verified else completed_entries
 
     # T02-BE-03: Resolver contexto geográfico y validar localidad mínima
     tome_context = _resolve_folder_inherited_context(client, folder_id, tenant_id)
@@ -4389,6 +4571,12 @@ async def get_folder_pre_export_summary(
             "Aviso: El tomo no tiene localidad completa (País o Estado ausente). "
             "Se recomienda completarla para interoperabilidad óptima con FamilySearch."
         )
+
+    if exportable_entries == 0:
+        if only_verified:
+            warnings.append("No se puede exportar el paquete con el filtro activo: el tomo aún no tiene actas Verificadas por Evaluador.")
+        else:
+            warnings.append("No se puede exportar el paquete: el tomo no tiene ninguna partida completada o verificada aún.")
 
     geographic_summary = {
         "country": tome_context.get("country"),
@@ -4406,14 +4594,20 @@ async def get_folder_pre_export_summary(
             "tome_name": folder_name,
             "folder_type": folder.get("folder_type"),
             "total_folios": total_folios,
+            "verified_folios": verified_folios,
             "total_entries": total_entries,
-            "completed_entries": completed_entries,
+            "completed_entries": exportable_entries,
+            "all_completed_entries": completed_entries,
+            "verified_entries": verified_entries,
+            "completed_count": max(0, completed_entries - verified_entries),
+            "verified_count": verified_entries,
             "revision_entries": revision_entries,
             "pending_entries": pending_entries,
             "has_revisions": has_revisions,
             "doubtful_folios_count": len(doubtful_folios),
-            "ready_for_export": completed_entries > 0,
-            "warnings": warnings if completed_entries > 0 else (warnings + ["No se puede exportar el paquete: el tomo no tiene ninguna partida completada o verificada aún."]),
+            "only_verified": only_verified,
+            "ready_for_export": exportable_entries > 0,
+            "warnings": warnings,
             "tome_context": tome_context,
             "geographic_summary": geographic_summary
         }
@@ -4424,6 +4618,7 @@ async def get_folder_pre_export_summary(
 async def export_familysearch_package(
     folder_id: str,
     include_images: bool = Query(False, description="Incluir archivos de fotos de alta resolución en subcarpeta images/"),
+    only_verified: bool = Query(False, description="Si es True, exporta exclusivamente actas con status == 'verified'"),
     auth: Dict[str, Any] = Depends(get_auth_context)
 ):
     tenant_id = auth["tenant_id"]
@@ -4439,7 +4634,7 @@ async def export_familysearch_package(
     tome_metadata["folder_name"] = folder.get("name", "Tomo")
 
     # 2. Folios del tomo
-    folios_res = client.table("folios").select("*").eq("folder_id", folder_id).order("sequence_order", desc=False).execute()
+    folios_res = client.table("folios").select("*").eq("folder_id", folder_id).eq("tenant_id", tenant_id).order("sequence_order", desc=False).execute()
     folios = folios_res.data or []
     folio_ids = [f["id"] for f in folios]
 
@@ -4456,6 +4651,8 @@ async def export_familysearch_package(
     folder_meta = folder.get("metadata") or {}
     tome_number = folder_meta.get("tome_number") or folder_meta.get("number")
 
+    allowed_statuses = ("verified",) if only_verified else ("completed", "verified")
+
     # 3. Partidas
     all_entries = []
     if folio_ids:
@@ -4466,7 +4663,7 @@ async def export_familysearch_package(
     if not all_entries and folios:
         for f in folios:
             f_status = (f.get("status") or "").lower()
-            if f_status in ("completed", "verified"):
+            if f_status in allowed_statuses:
                 all_entries.append({
                     "id": f"syn-{f['id']}",
                     "folio_id": f["id"],
@@ -4480,18 +4677,22 @@ async def export_familysearch_package(
                     "metadata": f.get("metadata") or {}
                 })
 
-    # T02-BE-02: Filtro estricto: rechazar si no hay partidas completadas o verificadas
+    # T02-BE-02: Filtro estricto según only_verified
     completed_entries = [
         e for e in all_entries
-        if (e.get("status") or "").lower() in ("completed", "verified")
+        if (e.get("status") or "").lower() in allowed_statuses
     ]
     if len(completed_entries) == 0:
         raise HTTPException(
             status_code=400,
-            detail="No se puede exportar el paquete: el tomo no tiene ninguna partida completada o verificada aún."
+            detail=(
+                "No se puede exportar el paquete: el tomo no tiene ninguna partida verificada por Evaluador aún."
+                if only_verified
+                else "No se puede exportar el paquete: el tomo no tiene ninguna partida completada o verificada aún."
+            )
         )
 
-    # Identificar folios que tienen al menos una partida completada
+    # Identificar folios que tienen al menos una partida exportable
     completed_folio_ids = set(str(e.get("folio_id")) for e in completed_entries if e.get("folio_id"))
 
     # T02-BE-03: Asegurar nombres canónicos para todos los folios incorporando foliación física y cara
@@ -4527,7 +4728,7 @@ async def export_familysearch_package(
             client.table("folios").update({
                 "canonical_filename": c_name,
                 "sequence_order": seq
-            }).eq("id", f["id"]).execute()
+            }).eq("id", f["id"]).eq("tenant_id", tenant_id).execute()
         except Exception as upd_err:
             print(f"Warning persisting canonical_filename for folio {f.get('id')}: {upd_err}")
 
@@ -4538,8 +4739,8 @@ async def export_familysearch_package(
     quality_score = round((len(completed_entries) / max(1, len(all_entries))) * 100, 2) if all_entries else 100.0
 
     # 4. Generar componentes de datos pasando ÚNICAMENTE completed_entries
-    excel_bytes, csv_bytes = generate_familysearch_matrix(completed_entries, folios, tome_metadata)
-    gedcom_str = generate_gedcom_551(completed_entries, folios, tome_metadata)
+    excel_bytes, csv_bytes = generate_familysearch_matrix(completed_entries, folios, tome_metadata, only_verified=only_verified)
+    gedcom_str = generate_gedcom_551(completed_entries, folios, tome_metadata, only_verified=only_verified)
     manifest_data = generate_manifest_json(
         folder=folder,
         folios=folios,
@@ -4592,6 +4793,879 @@ async def export_familysearch_package(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+# ==============================================================================
+# SPEC-017: MESA DE ARBITRAJE DE CALIDAD (/api/v1/evaluation/...)
+# ==============================================================================
+
+class EvaluationNextRequest(BaseModel):
+    queue_type: Optional[str] = "to_verify"  # "to_verify" (completed) | "doubtful" (revision)
+    series: Optional[str] = None
+    folder_id: Optional[str] = None
+    specific_folio_id: Optional[str] = None
+
+
+class EvaluationVerdictRequest(BaseModel):
+    verdict: str  # "verify_entry" | "verify_all" | "return_to_digitizer" | "mark_doubtful"
+    entry_id: Optional[str] = None
+    entry_number: Optional[int] = None
+    entries: Optional[List[FolioEntryCreate]] = None
+    review_notes: Optional[str] = None
+
+
+def _is_evaluation_locked_by_another(folio_meta: Dict[str, Any], current_user_id: Optional[str]) -> bool:
+    if not isinstance(folio_meta, dict):
+        return False
+    locked_at_str = folio_meta.get("evaluation_locked_at")
+    locked_by = folio_meta.get("evaluation_locked_by")
+    if not locked_at_str or not locked_by:
+        return False
+    if current_user_id and str(locked_by) == str(current_user_id):
+        return False
+    try:
+        clean_str = str(locked_at_str).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        if (now - dt) < timedelta(minutes=15):
+            return True
+    except Exception:
+        return False
+    return False
+
+
+@app.get("/api/v1/evaluation/queue")
+async def get_evaluation_queue(
+    queue_type: str = Query("to_verify", description="to_verify | doubtful | verified | all"),
+    series: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("evaluator", "archivist", "admin", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: se requiere rol Evaluador, Archivista o Administrador"
+        )
+
+    try:
+        tenant_id = auth["tenant_id"]
+        eff_limit = max(1, min(page_size, 100))
+        page = max(1, page)
+
+        # 1. Cargar carpetas del tenant
+        folders = []
+        try:
+            f_res = supabase.table("document_folders").select("id, name, parent_id, folder_type, metadata").eq("tenant_id", tenant_id).execute()
+            folders = f_res.data or []
+        except Exception as e_folders:
+            print(f"Notice querying document_folders in get_evaluation_queue: {e_folders}")
+
+        folder_map: Dict[str, Dict[str, Any]] = {str(f["id"]): f for f in folders if f.get("id")}
+
+        # 2. Cargar folios del tenant
+        all_folios = []
+        try:
+            folios_res = supabase.table("folios").select(
+                "id, folder_id, batch_id, status, metadata, r2_url, original_filename, canonical_filename, sequence_order, created_at, verified_at, updated_at"
+            ).eq("tenant_id", tenant_id).execute()
+            all_folios = folios_res.data or []
+        except Exception as e_folios:
+            print(f"Notice querying folios in get_evaluation_queue: {e_folios}")
+
+        norm_series = (series or "").strip().lower()
+        norm_folder_id = (folder_id or "").strip()
+
+        filtered_folios = []
+        for f in all_folios:
+            f_folder_id = str(f.get("folder_id")) if f.get("folder_id") is not None else None
+            f_meta = f.get("metadata") if isinstance(f.get("metadata"), dict) else {}
+            tome_name, series_key, is_unclassified = _resolve_folder_series_and_tome(f_folder_id, folder_map, f_meta)
+
+            if norm_folder_id and norm_folder_id.lower() not in ("all", "todos"):
+                if norm_folder_id.lower() == "unclassified":
+                    if not is_unclassified:
+                        continue
+                else:
+                    if f_folder_id != norm_folder_id:
+                        continue
+
+            if norm_series and norm_series not in ("all", "todos"):
+                if norm_series == "unclassified":
+                    if not is_unclassified:
+                        continue
+                elif norm_series in ("bautismo", "matrimonio", "defuncion") or "baut" in norm_series or "matr" in norm_series or "defun" in norm_series:
+                    target_s = _infer_series_from_text(norm_series) or norm_series
+                    f_meta_series = _infer_series_from_text(str(f_meta.get("series") or f_meta.get("sacrament_type") or ""))
+                    if series_key != target_s and f_meta_series != target_s:
+                        continue
+
+            f["_resolved_tome_name"] = tome_name
+            f["_resolved_series_key"] = series_key
+            filtered_folios.append(f)
+
+        # 3. Cargar partidas (folio_entries) del tenant
+        all_entries = []
+        try:
+            entries_res = supabase.table("folio_entries").select("*").eq("tenant_id", tenant_id).execute()
+            all_entries = entries_res.data or []
+        except Exception as e_entries:
+            print(f"Notice querying folio_entries in get_evaluation_queue: {e_entries}")
+
+        entries_by_folio: Dict[str, List[Dict[str, Any]]] = {}
+        for entry in all_entries:
+            fid = str(entry.get("folio_id") or "")
+            if not fid:
+                continue
+            entries_by_folio.setdefault(fid, []).append(entry)
+
+        for fid in entries_by_folio:
+            entries_by_folio[fid].sort(key=lambda x: int(x.get("entry_number") or 1))
+
+        # 4. Calcular contadores globales en vivo (counts)
+        today_utc_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        to_verify_count = 0
+        doubtful_count = 0
+        escalated_count = 0
+        verified_today_count = 0
+        total_verified_count = 0
+
+        for f in filtered_folios:
+            f_status = _normalize_record_status(f.get("status"))
+            f_meta = f.get("metadata") if isinstance(f.get("metadata"), dict) else {}
+            if f_status == "completed":
+                to_verify_count += 1
+            elif f_status == "revision":
+                doubtful_count += 1
+                if bool(f_meta.get("escalated_to_archivist")):
+                    escalated_count += 1
+            elif f_status == "verified":
+                total_verified_count += 1
+                v_at = str(f.get("verified_at") or f_meta.get("verified_at") or "")
+                if v_at.startswith(today_utc_str):
+                    verified_today_count += 1
+
+        counts = {
+            "to_verify": to_verify_count,
+            "doubtful": doubtful_count,
+            "escalated_to_archivist": escalated_count,
+            "verified_today": verified_today_count,
+            "total_verified": total_verified_count,
+        }
+
+        # 5. Filtrar según queue_type
+        q_type = (queue_type or "to_verify").strip().lower()
+        queue_folios = []
+        for f in filtered_folios:
+            f_status = _normalize_record_status(f.get("status"))
+            if q_type == "to_verify" and f_status == "completed":
+                queue_folios.append(f)
+            elif q_type == "doubtful" and f_status == "revision":
+                queue_folios.append(f)
+            elif q_type == "verified" and f_status == "verified":
+                queue_folios.append(f)
+            elif q_type == "all" and f_status in ("completed", "revision", "verified"):
+                queue_folios.append(f)
+
+        # 6. Enriquecer cada folio de la cola
+        items: List[Dict[str, Any]] = []
+        for f in queue_folios:
+            fid = str(f["id"])
+            f_meta = f.get("metadata") if isinstance(f.get("metadata"), dict) else {}
+            f_entries = entries_by_folio.get(fid, [])
+            tome_name = f.get("_resolved_tome_name") or "Sin Clasificar"
+            series_key = f.get("_resolved_series_key") or "unclassified"
+            f_status = _normalize_record_status(f.get("status"))
+
+            folio_num = f_meta.get("folio_number") or f.get("sequence_order") or 1
+            folio_side = str(f_meta.get("folio_side") or "recto").lower()
+            if f_entries:
+                first_e = f_entries[0]
+                if first_e.get("folio_number") is not None:
+                    folio_num = first_e.get("folio_number")
+                if first_e.get("folio_side"):
+                    folio_side = str(first_e.get("folio_side")).lower()
+
+            entries_summary = []
+            if f_entries:
+                for e in f_entries:
+                    e_meta = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+                    e_status = _normalize_record_status(e.get("status") or f_status)
+                    e_blank = bool(e_meta.get("is_blank", False) or f_meta.get("is_blank", False))
+                    p_person, ev_date, _, rec_type, comb = _extract_entry_fields(e_meta, f_meta, e_status, e_blank)
+                    act_num = e.get("act_number") or comb.get("numero_acta") or comb.get("act_number") or "S/N"
+                    entries_summary.append({
+                        "id": e.get("id"),
+                        "entry_number": int(e.get("entry_number") or 1),
+                        "act_number": str(act_num),
+                        "principal_person": p_person,
+                        "event_date": ev_date,
+                        "record_type": rec_type,
+                        "status": e_status,
+                    })
+            else:
+                e_blank = bool(f_meta.get("is_blank", False))
+                p_person, ev_date, _, rec_type, comb = _extract_entry_fields(f_meta, f_meta, f_status, e_blank)
+                act_num = comb.get("numero_acta") or comb.get("act_number") or "S/N"
+                entries_summary.append({
+                    "id": f"syn-{fid}-1",
+                    "entry_number": 1,
+                    "act_number": str(act_num),
+                    "principal_person": p_person,
+                    "event_date": ev_date,
+                    "record_type": rec_type,
+                    "status": f_status,
+                })
+
+            items.append({
+                "id": fid,
+                "canonical_filename": f.get("canonical_filename") or f.get("original_filename") or f"folio_{fid}.jpg",
+                "original_filename": f.get("original_filename"),
+                "status": f_status,
+                "folder_id": f.get("folder_id"),
+                "tome_name": tome_name,
+                "series": series_key,
+                "folio_number": folio_num,
+                "folio_side": folio_side,
+                "sequence_order": f.get("sequence_order") or 1,
+                "entries_count": len(f_entries) if f_entries else 1,
+                "entries_summary": entries_summary,
+                "digitized_by": f_meta.get("digitized_by") or "Operador",
+                "digitized_at": f_meta.get("digitized_at") or f.get("updated_at") or f.get("created_at"),
+                "verified_by": f_meta.get("verified_by"),
+                "verified_at": f.get("verified_at") or f_meta.get("verified_at"),
+                "review_notes": f_meta.get("review_notes") or "",
+                "escalated_to_archivist": bool(f_meta.get("escalated_to_archivist", False)),
+                "escalated_by": f_meta.get("escalated_by"),
+                "escalated_at": f_meta.get("escalated_at"),
+                "evaluation_locked_by": f_meta.get("evaluation_locked_by"),
+                "evaluation_locked_at": f_meta.get("evaluation_locked_at"),
+                "updated_at": f.get("updated_at") or f.get("created_at"),
+                "created_at": f.get("created_at"),
+            })
+
+        # 7. Ordenar por orden archivístico natural y paginar
+        def _eval_sort_key(item: Dict[str, Any]):
+            tome_str = str(item.get("tome_name") or "")
+            try:
+                f_num_int = int(item.get("folio_number") or 9999)
+            except (ValueError, TypeError):
+                f_num_int = 9999
+            f_side_str = str(item.get("folio_side") or "").lower()
+            side_order = 0 if f_side_str in ("recto", "r") else (1 if f_side_str in ("vuelto", "v") else 2)
+            return (tome_str, f_num_int, side_order)
+
+        items.sort(key=_eval_sort_key)
+
+        total_count = len(items)
+        total_pages = max(1, (total_count + eff_limit - 1) // eff_limit) if total_count > 0 else 1
+        offset = max(0, (page - 1) * eff_limit)
+        paginated_items = items[offset : offset + eff_limit]
+
+        return {
+            "status": "success",
+            "items": paginated_items,
+            "data": paginated_items,
+            "counts": counts,
+            "total": total_count,
+            "page": page,
+            "page_size": eff_limit,
+            "total_pages": total_pages,
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in get_evaluation_queue: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/evaluation/get_next")
+async def get_next_evaluation_folio(
+    request: Optional[EvaluationNextRequest] = None,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("evaluator", "archivist", "admin", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: se requiere rol Evaluador, Archivista o Administrador"
+        )
+
+    try:
+        tenant_id = auth["tenant_id"]
+        user_id = auth.get("user_id")
+        req = request or EvaluationNextRequest()
+
+        folio_data: Optional[Dict[str, Any]] = None
+
+        if req.specific_folio_id:
+            spec_res = (
+                supabase.table("folios")
+                .select("*")
+                .eq("id", req.specific_folio_id)
+                .eq("tenant_id", tenant_id)
+                .execute()
+            )
+            if spec_res.data and len(spec_res.data) > 0:
+                folio_data = spec_res.data[0]
+        else:
+            q_type = (req.queue_type or "to_verify").strip().lower()
+            target_status = "revision" if q_type == "doubtful" else "completed"
+
+            # Cargar carpetas si hay filtro de series
+            folder_map: Dict[str, Dict[str, Any]] = {}
+            if req.series or req.folder_id:
+                try:
+                    f_res = supabase.table("document_folders").select("id, name, parent_id, folder_type, metadata").eq("tenant_id", tenant_id).execute()
+                    folder_map = {str(f["id"]): f for f in (f_res.data or []) if f.get("id")}
+                except Exception:
+                    folder_map = {}
+
+            cand_res = (
+                supabase.table("folios")
+                .select("*")
+                .eq("tenant_id", tenant_id)
+                .eq("status", target_status)
+                .execute()
+            )
+            candidates = cand_res.data or []
+
+            norm_series = (req.series or "").strip().lower()
+            norm_folder_id = (req.folder_id or "").strip()
+
+            filtered_candidates = []
+            for c in candidates:
+                c_meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                if _is_evaluation_locked_by_another(c_meta, user_id):
+                    continue
+
+                c_folder_id = str(c.get("folder_id")) if c.get("folder_id") is not None else None
+                tome_name, series_key, is_unclassified = _resolve_folder_series_and_tome(c_folder_id, folder_map, c_meta)
+
+                if norm_folder_id and norm_folder_id.lower() not in ("all", "todos"):
+                    if norm_folder_id.lower() == "unclassified":
+                        if not is_unclassified:
+                            continue
+                    elif c_folder_id != norm_folder_id:
+                        continue
+
+                if norm_series and norm_series not in ("all", "todos"):
+                    if norm_series == "unclassified":
+                        if not is_unclassified:
+                            continue
+                    else:
+                        target_s = _infer_series_from_text(norm_series) or norm_series
+                        c_meta_series = _infer_series_from_text(str(c_meta.get("series") or c_meta.get("sacrament_type") or ""))
+                        if series_key != target_s and c_meta_series != target_s:
+                            continue
+
+                filtered_candidates.append(c)
+
+            def _cand_sort_key(c: Dict[str, Any]):
+                try:
+                    seq = int(c.get("sequence_order") or 999999)
+                except (ValueError, TypeError):
+                    seq = 999999
+                return (seq, str(c.get("created_at") or ""))
+
+            filtered_candidates.sort(key=_cand_sort_key)
+            if filtered_candidates:
+                folio_data = filtered_candidates[0]
+
+        if not folio_data:
+            return {
+                "status": "empty",
+                "message": "No hay más folios pendientes en esta cola de evaluación.",
+                "data": None
+            }
+
+        folio_id = str(folio_data["id"])
+        now_iso = datetime.now(timezone.utc).isoformat()
+        f_meta = dict(folio_data.get("metadata") or {}) if isinstance(folio_data.get("metadata"), dict) else {}
+        f_meta["evaluation_locked_at"] = now_iso
+        f_meta["evaluation_locked_by"] = user_id
+
+        try:
+            supabase.table("folios").update({"metadata": f_meta}).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+        except Exception as lock_err:
+            print(f"Notice locking folio for evaluation: {lock_err}")
+
+        folio_data["metadata"] = f_meta
+
+        # Generar Presigned URL de Cloudflare R2
+        if folio_data.get("r2_url"):
+            try:
+                view_url = s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": os.getenv("R2_BUCKET_NAME"),
+                        "Key": folio_data["r2_url"]
+                    },
+                    ExpiresIn=3600
+                )
+                folio_data["view_url"] = view_url
+            except Exception as url_err:
+                print(f"Error generating view_url in evaluation/get_next: {url_err}")
+                folio_data["view_url"] = None
+        else:
+            folio_data["view_url"] = None
+
+        # Cargar template desde batch_id o folder_id
+        template_id = None
+        template_obj = None
+        batch_id = folio_data.get("batch_id")
+        if batch_id:
+            try:
+                b_res = supabase.table("batches").select("template_id").eq("id", batch_id).eq("tenant_id", tenant_id).execute()
+                if b_res.data and len(b_res.data) > 0:
+                    template_id = b_res.data[0].get("template_id")
+            except Exception as b_err:
+                print(f"Notice fetching batch template_id in evaluation/get_next: {b_err}")
+
+        if not template_id and folio_data.get("folder_id"):
+            try:
+                fd_res = supabase.table("document_folders").select("metadata").eq("id", folio_data["folder_id"]).eq("tenant_id", tenant_id).execute()
+                if fd_res.data and isinstance(fd_res.data[0].get("metadata"), dict):
+                    template_id = fd_res.data[0]["metadata"].get("template_id")
+            except Exception:
+                pass
+
+        if template_id:
+            try:
+                t_res = supabase.table("templates").select("*").eq("id", template_id).execute()
+                if t_res.data and len(t_res.data) > 0:
+                    template_obj = t_res.data[0]
+            except Exception as t_err:
+                print(f"Notice fetching template in evaluation/get_next: {t_err}")
+
+        folio_data["template_id"] = template_id
+        folio_data["template"] = template_obj
+
+        # Cargar entries ordenadas por entry_number
+        entries_res = (
+            supabase.table("folio_entries")
+            .select("*")
+            .eq("folio_id", folio_id)
+            .eq("tenant_id", tenant_id)
+            .order("entry_number")
+            .execute()
+        )
+        entries = entries_res.data or []
+        if not entries:
+            entries = [{
+                "id": f"synthetic-{folio_id}-1",
+                "folio_id": folio_id,
+                "entry_number": 1,
+                "folio_number": f_meta.get("folio_number") or folio_data.get("sequence_order") or 1,
+                "folio_side": f_meta.get("folio_side") or "recto",
+                "act_number": f_meta.get("numero_acta") or f_meta.get("act_number") or None,
+                "is_continued": False,
+                "continued_from_entry_id": None,
+                "status": folio_data.get("status") or "completed",
+                "metadata": f_meta,
+                "bounding_box": None,
+            }]
+        folio_data["entries"] = entries
+
+        # Cargar contexto heredado desde document_folders
+        inherited_context = _resolve_folder_inherited_context(supabase, folio_data.get("folder_id"), tenant_id)
+        try:
+            folder_map_single: Dict[str, Dict[str, Any]] = {}
+            f_all_res = supabase.table("document_folders").select("id, name, parent_id, folder_type, metadata").eq("tenant_id", tenant_id).execute()
+            folder_map_single = {str(fd["id"]): fd for fd in (f_all_res.data or []) if fd.get("id")}
+            tome_name, series_key, _ = _resolve_folder_series_and_tome(
+                str(folio_data.get("folder_id")) if folio_data.get("folder_id") else None,
+                folder_map_single,
+                f_meta
+            )
+            inherited_context["folder_name"] = tome_name
+            inherited_context["series"] = series_key
+        except Exception:
+            pass
+
+        folio_data["inherited_context"] = inherited_context
+        folio_data["digitized_by"] = f_meta.get("digitized_by") or "Operador"
+        folio_data["digitized_at"] = f_meta.get("digitized_at") or folio_data.get("updated_at")
+        folio_data["verified_by"] = f_meta.get("verified_by")
+        folio_data["review_notes"] = f_meta.get("review_notes") or ""
+        folio_data["escalated_to_archivist"] = bool(f_meta.get("escalated_to_archivist", False))
+        folio_data["escalated_by"] = f_meta.get("escalated_by")
+
+        return {"status": "success", "data": folio_data}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in get_next_evaluation_folio: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/evaluation/{folio_id}/verdict")
+async def submit_evaluation_verdict(
+    folio_id: str,
+    request: EvaluationVerdictRequest,
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
+    role = auth.get("role")
+    if role not in ("evaluator", "archivist", "admin", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Permiso denegado: se requiere rol Evaluador, Archivista o Administrador"
+        )
+
+    verdict = (request.verdict or "").strip().lower()
+    if verdict not in ("verify_entry", "verify_all", "return_to_digitizer", "mark_doubtful"):
+        raise HTTPException(status_code=400, detail=f"Veredicto inválido: {request.verdict}")
+
+    try:
+        tenant_id = auth["tenant_id"]
+        user_id = auth.get("user_id")
+        evaluator_identity = _resolve_user_identity(user_id)
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # 1. Cargar el folio actual y sus folio_entries actuales
+        folio_res = supabase.table("folios").select("*").eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+        if not folio_res.data:
+            raise HTTPException(status_code=404, detail="Folio no encontrado")
+
+        folio = folio_res.data[0]
+        f_meta = dict(folio.get("metadata") or {}) if isinstance(folio.get("metadata"), dict) else {}
+
+        existing_entries_res = (
+            supabase.table("folio_entries")
+            .select("*")
+            .eq("folio_id", folio_id)
+            .eq("tenant_id", tenant_id)
+            .order("entry_number")
+            .execute()
+        )
+        existing_entries = existing_entries_res.data or []
+        prev_entries_by_num: Dict[int, Dict[str, Any]] = {
+            int(e.get("entry_number") or 1): e for e in existing_entries
+        }
+
+        # 2. Detectar correcciones del Evaluador para Active Learning Gold Standard
+        _SYSTEM_META_KEYS = {
+            "digitized_by", "digitized_at", "verified_by", "verified_at",
+            "review_notes", "priority_returned", "returned_by", "returned_at",
+            "escalated_to_archivist", "escalated_by", "escalated_at",
+            "evaluation_locked_at", "evaluation_locked_by", "is_blank"
+        }
+
+        if request.entries and verdict in ("verify_entry", "verify_all"):
+            training_rows_to_insert = []
+            for req_e in request.entries:
+                prev_e = prev_entries_by_num.get(req_e.entry_number)
+                prev_meta = (prev_e.get("metadata") if prev_e and isinstance(prev_e.get("metadata"), dict) else f_meta) or {}
+                if isinstance(prev_meta.get("data"), dict) and len(prev_meta["data"]) > 0:
+                    prev_meta = {**prev_meta, **prev_meta["data"]}
+
+                new_meta = req_e.metadata if isinstance(req_e.metadata, dict) else {}
+                if isinstance(new_meta.get("data"), dict) and len(new_meta["data"]) > 0:
+                    new_meta = {**new_meta, **new_meta["data"]}
+
+                for field_key, new_val in new_meta.items():
+                    if field_key in _SYSTEM_META_KEYS or field_key == "data":
+                        continue
+                    if isinstance(new_val, (dict, list)):
+                        continue
+                    prev_val_str = str(prev_meta.get(field_key) or "").strip()
+                    new_val_str = str(new_val or "").strip()
+                    if prev_val_str != new_val_str and (prev_val_str or new_val_str):
+                        training_rows_to_insert.append({
+                            "id": str(uuid.uuid4()),
+                            "tenant_id": tenant_id,
+                            "folio_id": folio_id,
+                            "field_name": str(field_key),
+                            "predicted_value": prev_val_str,
+                            "actual_value": new_val_str,
+                            "ai_prediction": prev_val_str,
+                            "human_truth": new_val_str,
+                            "confidence": 1.0,
+                            "action_type": "evaluator_verified_correction",
+                            "corrected_by_user_id": user_id,
+                        })
+
+            if training_rows_to_insert:
+                try:
+                    clean_db_rows = [
+                        {
+                            "id": r["id"],
+                            "tenant_id": r["tenant_id"],
+                            "folio_id": r["folio_id"],
+                            "field_name": r["field_name"],
+                            "predicted_value": r["predicted_value"],
+                            "actual_value": r["actual_value"],
+                            "confidence": r["confidence"],
+                            "action_type": r["action_type"],
+                            "corrected_by_user_id": r["corrected_by_user_id"],
+                        }
+                        for r in training_rows_to_insert
+                    ]
+                    supabase.table("training_data").insert(clean_db_rows).execute()
+                except Exception as td_err:
+                    print(f"Notice inserting evaluator_verified_correction into training_data: {td_err}")
+                try:
+                    _save_r2_training_data(tenant_id, training_rows_to_insert)
+                except Exception as r2_td_err:
+                    print(f"Notice saving evaluator training_data to R2: {r2_td_err}")
+
+        notes_str = (request.review_notes or "").strip()
+
+        # Helper para guardar/actualizar entradas enviadas en request.entries
+        def _upsert_submitted_entries(target_entry_status: str, extra_meta: Dict[str, Any], only_matching_entry: bool = False):
+            if not request.entries:
+                return
+            for req_e in request.entries:
+                prev_e = prev_entries_by_num.get(req_e.entry_number)
+                is_target = True
+                if only_matching_entry:
+                    is_target = (
+                        (request.entry_id and prev_e and str(prev_e.get("id")) == str(request.entry_id))
+                        or (request.entry_number is not None and req_e.entry_number == request.entry_number)
+                    )
+                prev_e_meta = dict(prev_e.get("metadata") or {}) if (prev_e and isinstance(prev_e.get("metadata"), dict)) else {}
+                req_e_meta = dict(req_e.metadata or {}) if isinstance(req_e.metadata, dict) else {}
+                merged_e_meta = {**prev_e_meta, **req_e_meta}
+                if is_target:
+                    merged_e_meta.update(extra_meta)
+
+                eff_status = target_entry_status if is_target else (prev_e.get("status") if prev_e else (req_e.status or "completed"))
+
+                e_payload = {
+                    "tenant_id": tenant_id,
+                    "folio_id": folio_id,
+                    "entry_number": req_e.entry_number,
+                    "status": eff_status,
+                    "metadata": merged_e_meta,
+                    "bounding_box": req_e.bounding_box,
+                    "folio_number": req_e.folio_number,
+                    "folio_side": req_e.folio_side or "recto",
+                    "act_number": req_e.act_number,
+                    "is_continued": bool(req_e.is_continued),
+                    "continued_from_entry_id": req_e.continued_from_entry_id,
+                    "updated_at": now_iso,
+                }
+                if prev_e and prev_e.get("id"):
+                    supabase.table("folio_entries").update(e_payload).eq("id", prev_e["id"]).eq("tenant_id", tenant_id).execute()
+                else:
+                    e_payload["created_at"] = now_iso
+                    e_payload["created_by"] = user_id
+                    supabase.table("folio_entries").insert(e_payload).execute()
+
+        # 3. Aplicar cada tipo de veredicto
+        if verdict == "verify_all":
+            extra_verified_meta = {
+                "verified_by": evaluator_identity,
+                "verified_at": now_iso,
+                "review_notes": notes_str,
+                "escalated_to_archivist": False,
+                "priority_returned": False,
+            }
+            if request.entries:
+                _upsert_submitted_entries("verified", extra_verified_meta, only_matching_entry=False)
+            elif existing_entries:
+                for prev_e in existing_entries:
+                    pe_meta = dict(prev_e.get("metadata") or {}) if isinstance(prev_e.get("metadata"), dict) else {}
+                    pe_meta.update(extra_verified_meta)
+                    supabase.table("folio_entries").update({
+                        "status": "verified",
+                        "metadata": pe_meta,
+                        "updated_at": now_iso
+                    }).eq("id", prev_e["id"]).eq("tenant_id", tenant_id).execute()
+
+            if request.entries and isinstance(request.entries[0].metadata, dict):
+                f_meta.update(request.entries[0].metadata)
+            f_meta.update({
+                "verified_by": evaluator_identity,
+                "verified_at": now_iso,
+                "review_notes": notes_str,
+                "escalated_to_archivist": False,
+                "priority_returned": False,
+                "evaluation_locked_at": None,
+                "evaluation_locked_by": None,
+            })
+            supabase.table("folios").update({
+                "status": "verified",
+                "verified_at": now_iso,
+                "metadata": f_meta,
+                "updated_at": now_iso
+            }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+            return {
+                "status": "success",
+                "verdict": "verify_all",
+                "folio_status": "verified",
+                "verified_by": evaluator_identity,
+                "verified_at": now_iso
+            }
+
+        elif verdict == "verify_entry":
+            extra_verified_meta = {
+                "verified_by": evaluator_identity,
+                "verified_at": now_iso,
+                "review_notes": notes_str,
+                "escalated_to_archivist": False,
+            }
+            if request.entries:
+                has_specific = bool(request.entry_id or request.entry_number is not None)
+                _upsert_submitted_entries("verified", extra_verified_meta, only_matching_entry=has_specific)
+            elif request.entry_id and not str(request.entry_id).startswith("synthetic-"):
+                target_e_res = supabase.table("folio_entries").select("*").eq("id", request.entry_id).eq("tenant_id", tenant_id).execute()
+                if target_e_res.data:
+                    te = target_e_res.data[0]
+                    te_meta = dict(te.get("metadata") or {}) if isinstance(te.get("metadata"), dict) else {}
+                    te_meta.update(extra_verified_meta)
+                    supabase.table("folio_entries").update({
+                        "status": "verified",
+                        "metadata": te_meta,
+                        "updated_at": now_iso
+                    }).eq("id", request.entry_id).eq("tenant_id", tenant_id).execute()
+            elif existing_entries:
+                target_e = existing_entries[0]
+                if request.entry_number is not None and request.entry_number in prev_entries_by_num:
+                    target_e = prev_entries_by_num[request.entry_number]
+                te_meta = dict(target_e.get("metadata") or {}) if isinstance(target_e.get("metadata"), dict) else {}
+                te_meta.update(extra_verified_meta)
+                supabase.table("folio_entries").update({
+                    "status": "verified",
+                    "metadata": te_meta,
+                    "updated_at": now_iso
+                }).eq("id", target_e["id"]).eq("tenant_id", tenant_id).execute()
+
+            # Comprobar si TODAS las partidas del folio están ahora en status == 'verified'
+            recheck_res = supabase.table("folio_entries").select("id, status").eq("folio_id", folio_id).eq("tenant_id", tenant_id).execute()
+            recheck_entries = recheck_res.data or []
+            all_verified = len(recheck_entries) == 0 or all(
+                (re.get("status") or "").lower() == "verified" for re in recheck_entries
+            )
+
+            if all_verified:
+                if request.entries and isinstance(request.entries[0].metadata, dict):
+                    f_meta.update(request.entries[0].metadata)
+                f_meta.update({
+                    "verified_by": evaluator_identity,
+                    "verified_at": now_iso,
+                    "review_notes": notes_str,
+                    "escalated_to_archivist": False,
+                    "priority_returned": False,
+                    "evaluation_locked_at": None,
+                    "evaluation_locked_by": None,
+                })
+                supabase.table("folios").update({
+                    "status": "verified",
+                    "verified_at": now_iso,
+                    "metadata": f_meta,
+                    "updated_at": now_iso
+                }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+                new_folio_status = "verified"
+            else:
+                new_folio_status = folio.get("status") or "completed"
+
+            return {
+                "status": "success",
+                "verdict": "verify_entry",
+                "folio_status": new_folio_status,
+                "all_verified": all_verified,
+                "verified_by": evaluator_identity,
+                "verified_at": now_iso
+            }
+
+        elif verdict == "return_to_digitizer":
+            eff_notes = notes_str or "Devuelto por Evaluador para corrección"
+            return_meta = {
+                "review_notes": eff_notes,
+                "returned_by": evaluator_identity,
+                "returned_at": now_iso,
+                "priority_returned": True,
+                "escalated_to_archivist": False,
+            }
+            if request.entries:
+                _upsert_submitted_entries("pending", return_meta, only_matching_entry=False)
+            elif existing_entries:
+                for prev_e in existing_entries:
+                    if request.entry_id and not str(request.entry_id).startswith("synthetic-") and str(prev_e.get("id")) != str(request.entry_id):
+                        continue
+                    pe_meta = dict(prev_e.get("metadata") or {}) if isinstance(prev_e.get("metadata"), dict) else {}
+                    pe_meta.update(return_meta)
+                    supabase.table("folio_entries").update({
+                        "status": "pending",
+                        "metadata": pe_meta,
+                        "updated_at": now_iso
+                    }).eq("id", prev_e["id"]).eq("tenant_id", tenant_id).execute()
+
+            f_meta.update({
+                **return_meta,
+                "evaluation_locked_at": None,
+                "evaluation_locked_by": None,
+            })
+            supabase.table("folios").update({
+                "status": "pending",
+                "locked_at": None,
+                "metadata": f_meta,
+                "updated_at": now_iso
+            }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+            return {
+                "status": "success",
+                "verdict": "return_to_digitizer",
+                "folio_status": "pending",
+                "returned_by": evaluator_identity,
+                "returned_at": now_iso,
+                "review_notes": eff_notes
+            }
+
+        elif verdict == "mark_doubtful":
+            eff_notes = notes_str or "Escalado al Archivista por Evaluador"
+            escalate_meta = {
+                "review_notes": eff_notes,
+                "escalated_to_archivist": True,
+                "escalated_by": evaluator_identity,
+                "escalated_at": now_iso,
+            }
+            if request.entries:
+                _upsert_submitted_entries("revision", escalate_meta, only_matching_entry=False)
+            elif existing_entries:
+                for prev_e in existing_entries:
+                    pe_meta = dict(prev_e.get("metadata") or {}) if isinstance(prev_e.get("metadata"), dict) else {}
+                    pe_meta.update(escalate_meta)
+                    supabase.table("folio_entries").update({
+                        "status": "revision",
+                        "metadata": pe_meta,
+                        "updated_at": now_iso
+                    }).eq("id", prev_e["id"]).eq("tenant_id", tenant_id).execute()
+
+            f_meta.update({
+                **escalate_meta,
+                "evaluation_locked_at": None,
+                "evaluation_locked_by": None,
+            })
+            supabase.table("folios").update({
+                "status": "revision",
+                "locked_at": None,
+                "metadata": f_meta,
+                "updated_at": now_iso
+            }).eq("id", folio_id).eq("tenant_id", tenant_id).execute()
+
+            return {
+                "status": "success",
+                "verdict": "mark_doubtful",
+                "folio_status": "revision",
+                "escalated_to_archivist": True,
+                "escalated_by": evaluator_identity,
+                "escalated_at": now_iso,
+                "review_notes": eff_notes
+            }
+
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error in submit_evaluation_verdict: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 

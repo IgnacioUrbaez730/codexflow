@@ -80,6 +80,11 @@ interface RecordData {
   created_at?: string;
   updated_at?: string;
   view_url?: string;
+  review_notes?: string;
+  escalated_to_archivist?: boolean;
+  escalated_by?: string;
+  digitized_by?: string;
+  verified_by?: string;
 }
 
 interface StatusCounts {
@@ -1335,10 +1340,29 @@ export default function RecordsPage() {
                             Completado
                           </span>
                         ) : rec.status === "revision" ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            Dudoso / Revisión
-                          </span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800"
+                              title={rec.review_notes || rec.metadata?.review_notes || undefined}
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Dudoso / Revisión
+                            </span>
+                            {Boolean(
+                              rec.escalated_to_archivist || rec.metadata?.escalated_to_archivist
+                            ) && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-900 border border-orange-300"
+                                title={
+                                  rec.review_notes ||
+                                  rec.metadata?.review_notes ||
+                                  "Escalado al Archivista por el Evaluador de Calidad"
+                                }
+                              >
+                                🔔 Escalado al Archivista
+                              </span>
+                            )}
+                          </div>
                         ) : rec.status === "in_progress" ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800">
                             <Play className="w-3 h-3 fill-current" />
@@ -1694,6 +1718,40 @@ export default function RecordsPage() {
                             <span>↩ Devolver a Pendiente</span>
                           </button>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Nota de Revisión / Escalamiento del Evaluador */}
+                    {(selectedRecord.review_notes ||
+                      selectedRecord.metadata?.review_notes ||
+                      selectedRecord.escalated_to_archivist ||
+                      selectedRecord.metadata?.escalated_to_archivist) && (
+                      <div className="p-3 bg-orange-950/60 border border-orange-800/80 rounded-xl text-xs text-orange-200 space-y-1">
+                        <div className="font-bold flex items-center gap-2 text-orange-300">
+                          <span>
+                            {selectedRecord.escalated_to_archivist ||
+                            selectedRecord.metadata?.escalated_to_archivist
+                              ? "🔔 Escalado al Archivista"
+                              : "⚠️ Nota de Control de Calidad"}
+                          </span>
+                          {(selectedRecord.escalated_by ||
+                            selectedRecord.metadata?.escalated_by) && (
+                            <span className="text-[10px] font-normal text-orange-400">
+                              por{" "}
+                              {selectedRecord.escalated_by ||
+                                selectedRecord.metadata?.escalated_by}
+                            </span>
+                          )}
+                        </div>
+                        {(selectedRecord.review_notes ||
+                          selectedRecord.metadata?.review_notes) && (
+                          <p className="italic">
+                            &ldquo;
+                            {selectedRecord.review_notes ||
+                              selectedRecord.metadata?.review_notes}
+                            &rdquo;
+                          </p>
+                        )}
                       </div>
                     )}
 

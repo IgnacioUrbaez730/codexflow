@@ -34,7 +34,7 @@ function SubdomainContent({
           <span className="font-bold tracking-tight text-base">CodexFlow</span>
         </div>
         <span className="text-xs text-gray-400 capitalize bg-gray-800 px-2 py-1 rounded">
-          {role}
+          {role === "evaluator" ? "Evaluador de Calidad" : role}
         </span>
       </div>
 
@@ -93,6 +93,17 @@ export default function SubdomainLayout({
               pathname.startsWith(`/${subdomain}/metrics`);
             if (!isAllowed) {
               router.replace(`/${subdomain}/visor`);
+              return;
+            }
+          }
+
+          // Si es evaluator, bloquear /ingest y /settings/users y redirigir a /evaluacion
+          if (data.role === "evaluator") {
+            const isRestrictedForEvaluator =
+              pathname.startsWith(`/${subdomain}/ingest`) ||
+              pathname.startsWith(`/${subdomain}/settings/users`);
+            if (isRestrictedForEvaluator) {
+              router.replace(`/${subdomain}/evaluacion`);
               return;
             }
           }

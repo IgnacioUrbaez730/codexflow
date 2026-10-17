@@ -312,20 +312,22 @@ def _extract_marriage_fields(meta: Dict[str, Any]) -> Tuple[bool, Dict[str, str]
 def generate_familysearch_matrix(
     entries: List[Dict[str, Any]],
     folios: List[Dict[str, Any]],
-    tome_metadata: Dict[str, Any]
+    tome_metadata: Dict[str, Any],
+    only_verified: bool = False
 ) -> Tuple[bytes, bytes]:
     """
     T02-BE-02: Genera la matriz de indexación oficial en XLSX y CSV.
-    - CERO filas en estado 'pending'. Filtro estricto exclusivo para 'completed' o 'verified'.
+    - CERO filas en estado 'pending'. Filtro estricto exclusivo para 'completed' o 'verified' (o solo 'verified' si only_verified=True).
     - Incorpora las columnas archivísticas canónicas:
       'folio_fisico', 'cara_folio' (Recto/Vuelto/Unica) y 'numero_acta'.
     - Desglosa actas de matrimonio con novio y novia en dos filas enlazadas.
     - Aplica consolidación de partidas interfolio (T02-BE-04).
     """
+    allowed_statuses = ("verified",) if only_verified else ("completed", "verified")
     # Filtro estricto: Cero pendientes
     valid_entries = [
         e for e in entries
-        if (e.get("status") or "").lower() in ("completed", "verified")
+        if (e.get("status") or "").lower() in allowed_statuses
     ]
 
     # Consolidación interfolio
@@ -512,15 +514,17 @@ def generate_familysearch_matrix(
 def generate_gedcom_551(
     entries: List[Dict[str, Any]],
     folios: List[Dict[str, Any]],
-    tome_metadata: Dict[str, Any]
+    tome_metadata: Dict[str, Any],
+    only_verified: bool = False
 ) -> str:
     """
     Genera un archivo estándar GEDCOM 5.5.1 enlazado a los folios digitales
     y excluyendo partidas pending.
     """
+    allowed_statuses = ("verified",) if only_verified else ("completed", "verified")
     valid_entries = [
         e for e in entries
-        if (e.get("status") or "").lower() in ("completed", "verified")
+        if (e.get("status") or "").lower() in allowed_statuses
     ]
     consolidated_entries = consolidate_continued_entries(valid_entries)
 

@@ -27,7 +27,13 @@ export default function LoginPage() {
         });
         if (res.ok) {
           const data = await res.json();
-          router.push(data.redirect_url);
+          const targetRedirect =
+            data.redirect_url ||
+            data.redirect_to ||
+            (data.role === 'evaluator' && data.tenant_name
+              ? `/${data.tenant_name}/evaluacion`
+              : '/pending');
+          router.push(targetRedirect);
         } else {
           router.push('/pending');
         }
@@ -79,7 +85,13 @@ export default function LoginPage() {
           });
           if (res.ok) {
             const userData = await res.json();
-            router.push(userData.redirect_url);
+            const targetRedirect =
+              userData.redirect_url ||
+              userData.redirect_to ||
+              (userData.role === 'evaluator' && userData.tenant_name
+                ? `/${userData.tenant_name}/evaluacion`
+                : '/pending');
+            router.push(targetRedirect);
             router.refresh();
           } else {
             router.push('/pending');
