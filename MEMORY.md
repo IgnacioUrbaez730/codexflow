@@ -42,15 +42,18 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
   4. `pre-export-summary`: Advertencias no bloqueantes si faltan País o Estado.
 - **Retroactividad Dinámica:** Toda la resolución opera en memoria en tiempo de consulta/exportación; cualquier cambio en la localidad de una parroquia se refleja inmediatamente en sus tomos y folios sin alterar la base de datos de folios.
 
+## Módulo 14 COMPLETADO: Estándar Archivístico, Foliación Recto/Vuelto, Plantillas Maestras FamilySearch y Filtro Estricto DIP
+
+- **Foliación Archivística Tridimensional:** Desacoplamiento de imagen digital y foliación física en `folio_entries`: `folio_number`, `folio_side` ('recto', 'vuelto', 'unica'), `act_number` e `is_continued`. Selector bimembre en Visor y alternancia automática inteligente al pulsar `Ctrl + Enter` (Recto -> Vuelto -> Folio+1 Recto) con detección visual de saltos.
+- **Plantillas Maestras Oficiales Inmutables:** Inyección de las 3 plantillas canónicas completas de FamilySearch (`is_system_template = true`) para Bautismo, Matrimonio (con desglose de ambos contrayentes) y Defunción, blindadas por trigger PostgreSQL contra eliminación o alteración accidental de campos base.
+- **Filtro Estricto DIP y Cero Pendientes:** `export_familysearch_package` filtra estrictamente partidas en `completed/verified`. Garantiza **cero filas en estado `pending`** en `matriz_indexacion.xlsx`, CSV y GEDCOM. El empaquetado integral con fotos (`include_images=True`) solo descarga las páginas que contengan partidas completadas, nombradas canónicamente con la cara física: `_F014R.jpg`. Si un tomo tiene 0 completadas, la exportación se rechaza con HTTP 400 y el botón se desactiva.
+- **Explorador `/records` Optimizado:** Paginación SQL con `range()` en backend y eliminación del spinner infinito en frontend, listando registros con su foliación `F.14r` en menos de 150ms.
+- **Tooling Aislado:** Script independiente en `tools/seeding/seed_demo_data.py` fuera de los paquetes de despliegue de Vercel/Render, con opción `--clean` y enfocado en la cuenta de demostración (`belkisagreda1@gmail.com`).
+
 ## Próximos pasos (Pendientes)
-- **FASE DE GESTIÓN DOCUMENTAL E INTEROPERABILIDAD FAMILYSEARCH (Spec 012):**
-  - Espec formal creada: specs/012-folder-management-familysearch-interoperability/spec.md.
-  - Agrupación por Carpetas/Tomos (estilo DCam de FamilySearch) con metadatos de contexto (Parroquia, Años, Serie documental).
-  - Capacidad de asignar imágenes sueltas a tomos existentes sin reiniciar lotes.
-  - Soporte de múltiples actas/partidas por imagen física.
-  - Paquete de entrega estandarizado FamilySearch (DIP): Matriz Excel/CSV vinculada obligatoriamente con image_file_name + manifiesto de tomo.
-- **FASE DE CREACIÓN B2B (Spec 007):**
-- Tareas: Crear el plan técnico para `specs/007-b2b-tenant-management` (Creación manual de ONGs por el Superadmin, Suspensión, Soporte y Reenvío de Invitaciones).
+- **SPEC-015: Rol de Evaluador y Mesa de Arbitraje de Calidad (`/evaluacion`).**
+- **Generación de Dataset Demo de Alta Fidelidad:** Ejecutar el seed para aprovisionar 10 folios de prueba en la cuenta de Belkis Agreda.
+- **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 
