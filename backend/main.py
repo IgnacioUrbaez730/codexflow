@@ -663,8 +663,19 @@ def ensure_folio_ai_predictions(
     existing_preds = folio_data.get("ai_predictions")
     if not force:
         if isinstance(existing_preds, list) and len(existing_preds) > 0:
+            cleaned_preds = []
             for p in existing_preds:
-                if isinstance(p, dict) and isinstance(p.get("bbox"), dict) and "bbox_array" not in p:
+                if not isinstance(p, dict):
+                    continue
+                # Descartar predicciones sintéticas viejas ('ignacio', 'urbaez', o confianza genérica)
+                s_text = str(p.get("suggestedText") or p.get("suggested_text") or p.get("value") or "").strip().lower()
+                if s_text in ("ignacio", "urbaez", "20/09/1983"):
+                    p["suggestedText"] = ""
+                    p["suggested_text"] = ""
+                    if "value" in p:
+                        p["value"] = ""
+
+                if isinstance(p.get("bbox"), dict) and "bbox_array" not in p:
                     bx = float(p["bbox"].get("x", 0.0))
                     by = float(p["bbox"].get("y", 0.0))
                     bw = float(p["bbox"].get("width", 0.0))
@@ -672,7 +683,10 @@ def ensure_folio_ai_predictions(
                     coords = [round(bx, 4), round(by, 4), round(bx + bw, 4), round(by + bh, 4)]
                     p["bbox_array"] = coords
                     p["bbox_coords"] = coords
-            return existing_preds
+                cleaned_preds.append(p)
+
+            folio_data["ai_predictions"] = cleaned_preds
+            return cleaned_preds
         # Si folio_data no tiene predicciones guardadas, no inventar datos aleatorios ni forzar valores de simulación
         folio_data["ai_predictions"] = []
         return []

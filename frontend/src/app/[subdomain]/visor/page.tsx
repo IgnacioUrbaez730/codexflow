@@ -34,6 +34,11 @@ import { shouldPrefillPrediction } from "../../../utils/aiGeometry";
 
 function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
   if (!raw) return [];
+  const isSyntheticVal = (text: string) => {
+    const clean = text.trim().toLowerCase();
+    return clean === "ignacio" || clean === "urbaez" || clean === "20/09/1983";
+  };
+
   if (Array.isArray(raw)) {
     return raw
       .filter((p) => {
@@ -57,15 +62,18 @@ function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
                 Number((bbox.x + bbox.width).toFixed(4)),
                 Number((bbox.y + bbox.height).toFixed(4)),
               ];
+        const rawSuggested = p.suggestedText || p.suggested_text || p.value || "";
+        const cleanSuggested = isSyntheticVal(String(rawSuggested)) ? "" : rawSuggested;
+
         return {
           id: p.id || `pred-${idx}-${p.fieldKey || p.field_key}`,
           folioId: p.folioId || p.folio_id || folioId,
           fieldKey: p.fieldKey || p.field_key || "",
           field_key: p.field_key || p.fieldKey || "",
           fieldLabel: p.fieldLabel || p.field_label || p.fieldKey || p.field_key || "",
-          suggestedText: p.suggestedText || p.suggested_text || p.value || "",
-          suggested_text: p.suggested_text || p.suggestedText || p.value || "",
-          confidence: typeof p.confidence === "number" ? p.confidence : 0.85,
+          suggestedText: cleanSuggested,
+          suggested_text: cleanSuggested,
+          confidence: isSyntheticVal(String(rawSuggested)) ? 0.0 : (typeof p.confidence === "number" ? p.confidence : 0.85),
           entry_number: p.entry_number || p.entryNumber,
           entryNumber: p.entryNumber || p.entry_number,
           bbox,
@@ -100,13 +108,17 @@ function parseAIPredictions(raw: any, folioId?: string): AIPrediction[] {
                 Number((bbox.x + bbox.width).toFixed(4)),
                 Number((bbox.y + bbox.height).toFixed(4)),
               ];
+        const rawSuggested = val.value || val.suggestedText || val.suggested_text || "";
+        const cleanSuggested = isSyntheticVal(String(rawSuggested)) ? "" : rawSuggested;
+
         return {
           id: val.id || `pred-${key}-${idx}`,
           folioId: val.folioId || folioId,
           fieldKey: key,
           field_key: key,
-          suggestedText: val.value || val.suggestedText || val.suggested_text || "",
-          confidence: typeof val.confidence === "number" ? val.confidence : 0.85,
+          suggestedText: cleanSuggested,
+          suggested_text: cleanSuggested,
+          confidence: isSyntheticVal(String(rawSuggested)) ? 0.0 : (typeof val.confidence === "number" ? val.confidence : 0.85),
           entry_number: val.entry_number || val.entryNumber,
           entryNumber: val.entryNumber || val.entry_number,
           bbox,
@@ -447,9 +459,9 @@ export default function VisorDual() {
     []
   );
 
-  // Initialize form with intelligent prefilling (Confidence >= 80% and valid format)
+  // Initialize form strictly clean for manual indexing (inherited fields locked, non-inherited blank)
   const initializeFormWithAI = useCallback(
-    (currentTemplate: any, predictions: AIPrediction[], existingMetadata?: any) => {
+    (currentTemplate: any, _predictions: AIPrediction[], existingMetadata?: any) => {
       const newForm: Record<string, any> = {};
       const newPrefilled = new Set<string>();
 
@@ -463,28 +475,13 @@ export default function VisorDual() {
           }
 
           // If folio already has human metadata saved
-          if (existingMetadata && existingMetadata[field.id] !== undefined) {
+          if (existingMetadata && existingMetadata[field.id] !== undefined && existingMetadata[field.id] !== null) {
             newForm[field.id] = existingMetadata[field.id];
             continue;
           }
 
-          // Search matching AI prediction
-          const match = predictions.find(
-            (p) =>
-              p.fieldKey === field.id ||
-              p.fieldKey === field.name ||
-              p.field_key === field.id
-          );
-
-          if (
-            match &&
-            shouldPrefillPrediction(match.confidence, match.suggestedText, field.type)
-          ) {
-            newForm[field.id] = match.suggestedText;
-            newPrefilled.add(field.id);
-          } else {
-            newForm[field.id] = "";
-          }
+          // Strict blank initialization for manual indexing (no simulated or AI prefill)
+          newForm[field.id] = "";
         }
       }
 
@@ -496,41 +493,11 @@ export default function VisorDual() {
   );
 
   const applyPredictionsToEmptyFields = useCallback(
-    (currentTemplate: any, predictions: AIPrediction[]) => {
-      if (!currentTemplate || !Array.isArray(currentTemplate.fields) || predictions.length === 0) {
-        return;
-      }
-      setFormData((prevForm) => {
-        const updated = { ...prevForm };
-        const nextPrefilled = new Set(prefilledFields);
-        for (const field of currentTemplate.fields) {
-          const inh = getInheritedFieldInfo(field);
-          if (inh) {
-            updated[field.id] = inh.value;
-            continue;
-          }
-
-          if (updated[field.id] === undefined || String(updated[field.id]).trim() === "") {
-            const match = predictions.find(
-              (p) =>
-                p.fieldKey === field.id ||
-                p.fieldKey === field.name ||
-                p.field_key === field.id
-            );
-            if (
-              match &&
-              shouldPrefillPrediction(match.confidence, match.suggestedText, field.type)
-            ) {
-              updated[field.id] = match.suggestedText;
-              nextPrefilled.add(field.id);
-            }
-          }
-        }
-        setPrefilledFields(nextPrefilled);
-        return updated;
-      });
+    (_currentTemplate: any, _predictions: AIPrediction[]) => {
+      // Desactivada la sobreescritura automática de campos vacíos con IA
+      return;
     },
-    [prefilledFields, getInheritedFieldInfo]
+    []
   );
 
   // Fetch entries and inherited context from server
@@ -1051,7 +1018,14 @@ export default function VisorDual() {
   // Restore local draft callback
   const handleRestoreDraft = useCallback((draft: LocalDraft) => {
     if (draft.formData) {
-      setFormData(draft.formData);
+      const sanitizedDraftForm: Record<string, any> = { ...draft.formData };
+      for (const [k, v] of Object.entries(sanitizedDraftForm)) {
+        const strVal = String(v || "").trim().toLowerCase();
+        if (strVal === "ignacio" || strVal === "urbaez" || strVal === "20/09/1983") {
+          sanitizedDraftForm[k] = "";
+        }
+      }
+      setFormData(sanitizedDraftForm);
     }
     if (draft.modifiedFields && Array.isArray(draft.modifiedFields)) {
       setModifiedFields(new Set(draft.modifiedFields));
@@ -1088,14 +1062,22 @@ export default function VisorDual() {
   const handleConfirmDiscard = useCallback(() => {
     discardDraft();
     setIsDiscardModalOpen(false);
-    if (template && folio) {
-      const preds = parseAIPredictions(folio.ai_predictions, folio.id);
-      initializeFormWithAI(template, preds, folio.metadata);
+
+    const cleanForm: Record<string, any> = {};
+    if (template && template.fields) {
+      for (const f of template.fields) {
+        const inh = getInheritedFieldInfo(f);
+        cleanForm[f.id] = inh ? inh.value : "";
+      }
     }
+    setFormData(cleanForm);
+    setPrefilledFields(new Set());
+    setModifiedFields(new Set());
+
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setRotation(0);
-  }, [discardDraft, template, folio, initializeFormWithAI]);
+  }, [discardDraft, template, getInheritedFieldInfo]);
 
   // Flujo de Guardado y Avance (T04-FE-04)
   const handleSave = useCallback(async () => {
@@ -1585,9 +1567,9 @@ export default function VisorDual() {
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-sm text-gray-500">Folio ID: {folio.id}</span>
-                {aiPredictions.length > 0 && (
+                {showAIOverlay && aiPredictions.filter(p => Boolean(p.suggestedText && p.suggestedText.trim() !== "")).length > 0 && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                    {aiPredictions.length} campos detectados por IA
+                    {aiPredictions.filter(p => Boolean(p.suggestedText && p.suggestedText.trim() !== "")).length} campos detectados por IA
                   </span>
                 )}
                 <AutosaveBadge status={autosaveStatus} lastSavedAt={lastSavedAt} />
