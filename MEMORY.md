@@ -65,6 +65,7 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Seeding Idempotente:** Script orquestador `tools/seeding/seed_realistic_corpus.py` con opción `--clean` y aislamiento multi-tenant estricto.
 
 ## Próximos pasos (Pendientes)
+- **Ruta de Optimización y Rendimiento de Vistas:** Auditar la navegación y carga entre páginas (`/ingest`, `/visor`, `/records`, `/dashboard`). Detectar re-renders innecesarios, depurar código muerto o consultas bloqueantes de Supabase para garantizar transiciones fluidas.
 - **SPEC-016: Rol de Evaluador y Mesa de Arbitraje de Calidad (`/evaluacion`).**
 - **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores sin desvíos de URL.
 
