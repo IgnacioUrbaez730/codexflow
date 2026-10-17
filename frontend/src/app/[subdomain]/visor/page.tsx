@@ -675,6 +675,7 @@ export default function VisorDual() {
       const resData = await res.json();
       if (resData.status === "success" && resData.data) {
         const nextFolio = resData.data;
+        nextFolio.view_url = nextFolio.view_url || nextFolio.r2_url;
         setFolio(nextFolio);
 
         // Load entries & inherited context for multi-partida
@@ -743,6 +744,7 @@ export default function VisorDual() {
         const resData = await res.json();
         if (res.ok && resData.status === "success" && resData.data) {
           const specFolio = resData.data;
+          specFolio.view_url = specFolio.view_url || specFolio.r2_url;
           setFolio(specFolio);
 
           // Load entries & inherited context for multi-partida
@@ -1480,81 +1482,93 @@ export default function VisorDual() {
             />
           </div>
 
-          {folio.view_url ? (
-            <>
-              <div
-                className="relative flex items-center justify-center max-h-full max-w-full"
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-                  transformOrigin: "center center",
-                  transition: isDragging ? "none" : "transform 0.1s ease-out",
-                }}
-              >
-                <img
-                  ref={imgRef}
-                  src={folio.view_url}
-                  alt="Documento para indexar"
-                  draggable={false}
-                  onLoad={(e) => {
-                    const el = e.currentTarget;
-                    setImgDimensions({
-                      width: el.naturalWidth || el.clientWidth || 800,
-                      height: el.naturalHeight || el.clientHeight || 1000,
-                    });
-                    setImageRect(el.getBoundingClientRect());
-                  }}
+          {(() => {
+            const displayImageUrl = folio?.view_url || folio?.r2_url || folio?.thumbnail_url || "";
+            return displayImageUrl ? (
+              <>
+                <div
+                  className="relative flex items-center justify-center max-h-full max-w-full"
                   style={{
-                    cursor: magnifier.active
-                      ? "crosshair"
-                      : isDragging
-                      ? "grabbing"
-                      : "grab",
-                    filter: filterString,
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                    transformOrigin: "center center",
+                    transition: isDragging ? "none" : "transform 0.1s ease-out",
                   }}
-                  className="max-h-full max-w-full object-contain rounded shadow-lg block"
-                />
+                >
+                  <img
+                    ref={imgRef}
+                    src={displayImageUrl}
+                    alt="Documento para indexar"
+                    draggable={false}
+                    onLoad={(e) => {
+                      const el = e.currentTarget;
+                      setImgDimensions({
+                        width: el.naturalWidth || el.clientWidth || 800,
+                        height: el.naturalHeight || el.clientHeight || 1000,
+                      });
+                      setImageRect(el.getBoundingClientRect());
+                    }}
+                    onError={(e) => {
+                      console.warn("Error cargando imagen principal del visor:", displayImageUrl);
+                      const target = e.currentTarget;
+                      // Fallback SVG placeholder elegante si falla la URL
+                      const placeholderSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000"><rect width="800" height="1000" fill="%231f2937"/><text x="50%" y="50%" fill="%239ca3af" font-family="sans-serif" font-size="20" text-anchor="middle">No se pudo cargar la imagen del documento</text></svg>`;
+                      if (target.src !== placeholderSvg) {
+                        target.src = placeholderSvg;
+                      }
+                    }}
+                    style={{
+                      cursor: magnifier.active
+                        ? "crosshair"
+                        : isDragging
+                        ? "grabbing"
+                        : "grab",
+                      filter: filterString,
+                    }}
+                    className="max-h-full max-w-full object-contain rounded shadow-lg block"
+                  />
 
-                {/* AI Vector Bounding Boxes Overlay with multi-entry segmentation (T04-FE-05) */}
-                <AIOverlayLayer
+                  {/* AI Vector Bounding Boxes Overlay with multi-entry segmentation (T04-FE-05) */}
+                  <AIOverlayLayer
+                    predictions={aiPredictions}
+                    activeFieldKey={activeFieldKey}
+                    activeEntryNumber={activeEntryNumber}
+                    activeEntryBoundingBox={activeEntryBoundingBox}
+                    hasMultipleEntries={entries.length > 1}
+                    visible={showAIOverlay}
+                    rotation={0}
+                    imageWidth={
+                      imgRef.current?.naturalWidth ||
+                      imgRef.current?.clientWidth ||
+                      imgDimensions.width ||
+                      800
+                    }
+                    imageHeight={
+                      imgRef.current?.naturalHeight ||
+                      imgRef.current?.clientHeight ||
+                      imgDimensions.height ||
+                      1000
+                    }
+                    onSelectPrediction={handleSelectPredictionBox}
+                  />
+                </div>
+
+                {/* Interactive Magnifier Floating Lens */}
+                <MagnifierLens
+                  imageSrc={displayImageUrl}
+                  imgRef={imgRef}
+                  magnifier={magnifier}
+                  filterString={filterString}
+                  imageRect={imageRect}
+                  rotation={rotation}
                   predictions={aiPredictions}
                   activeFieldKey={activeFieldKey}
-                  activeEntryNumber={activeEntryNumber}
-                  activeEntryBoundingBox={activeEntryBoundingBox}
-                  hasMultipleEntries={entries.length > 1}
-                  visible={showAIOverlay}
-                  rotation={0}
-                  imageWidth={
-                    imgRef.current?.naturalWidth ||
-                    imgRef.current?.clientWidth ||
-                    imgDimensions.width ||
-                    800
-                  }
-                  imageHeight={
-                    imgRef.current?.naturalHeight ||
-                    imgRef.current?.clientHeight ||
-                    imgDimensions.height ||
-                    1000
-                  }
-                  onSelectPrediction={handleSelectPredictionBox}
+                  showOverlay={showAIOverlay}
                 />
-              </div>
-
-              {/* Interactive Magnifier Floating Lens */}
-              <MagnifierLens
-                imageSrc={folio.view_url}
-                imgRef={imgRef}
-                magnifier={magnifier}
-                filterString={filterString}
-                imageRect={imageRect}
-                rotation={rotation}
-                predictions={aiPredictions}
-                activeFieldKey={activeFieldKey}
-                showOverlay={showAIOverlay}
-              />
-            </>
-          ) : (
-            <div className="text-gray-400">Cargando documento...</div>
-          )}
+              </>
+            ) : (
+              <div className="text-gray-400">Cargando documento...</div>
+            );
+          })()}
         </div>
 
         {/* Right side: Intelligent Indexing Form */}

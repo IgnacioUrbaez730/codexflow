@@ -859,19 +859,24 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
         folio_data["template_id"] = template_id
         folio_data["template"] = template_obj
 
-        if folio_data.get("r2_url"):
-            try:
-                view_url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={
-                        'Bucket': os.getenv('R2_BUCKET_NAME'),
-                        'Key': folio_data["r2_url"]
-                    },
-                    ExpiresIn=3600
-                )
-                folio_data["view_url"] = view_url
-            except Exception as e:
-                print(f"Error generando view_url: {e}")
+        r2_val = folio_data.get("r2_url")
+        if r2_val:
+            r2_str = str(r2_val).strip()
+            if r2_str.startswith("data:image/") or r2_str.startswith("http://") or r2_str.startswith("https://"):
+                folio_data["view_url"] = r2_str
+            else:
+                try:
+                    view_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={
+                            'Bucket': os.getenv('R2_BUCKET_NAME'),
+                            'Key': r2_str
+                        },
+                        ExpiresIn=3600
+                    )
+                    folio_data["view_url"] = view_url
+                except Exception as e:
+                    print(f"Error generando view_url: {e}")
 
         return {"status": "success", "data": folio_data}
     except Exception as e:
@@ -953,19 +958,24 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
         folio_data["template_id"] = template_id
         folio_data["template"] = template_obj
 
-        if folio_data.get("r2_url"):
-            try:
-                view_url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={
-                        'Bucket': os.getenv('R2_BUCKET_NAME'),
-                        'Key': folio_data["r2_url"]
-                    },
-                    ExpiresIn=3600
-                )
-                folio_data["view_url"] = view_url
-            except Exception as e:
-                print(f"Error generando view_url: {e}")
+        r2_val = folio_data.get("r2_url")
+        if r2_val:
+            r2_str = str(r2_val).strip()
+            if r2_str.startswith("data:image/") or r2_str.startswith("http://") or r2_str.startswith("https://"):
+                folio_data["view_url"] = r2_str
+            else:
+                try:
+                    view_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={
+                            'Bucket': os.getenv('R2_BUCKET_NAME'),
+                            'Key': r2_str
+                        },
+                        ExpiresIn=3600
+                    )
+                    folio_data["view_url"] = view_url
+                except Exception as e:
+                    print(f"Error generando view_url: {e}")
 
         return {"status": "success", "data": folio_data}
     except Exception as e:
