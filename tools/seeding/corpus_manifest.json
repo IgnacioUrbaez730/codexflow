@@ -43,7 +43,7 @@
       "folio_number": 1,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F001R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F001R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F001R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Authentic 1885 Carupano baptism sacramental register page, folio 1 recto, high resolution historical photograph, sepia toned laid rag paper with slight edge browning, neat Spanish clerical cursive handwriting in dark iron gall ink, 2 structured sacramental entries with marginal headers, ornate calligraphy on signatures.",
@@ -88,7 +88,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F001R.jpg"
     },
     {
       "series": "bautismo",
@@ -98,7 +99,7 @@
       "folio_number": 2,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F002V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F002V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F002V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Sacramental parish archive book page, 1885 Carupano, folio 2 verso, iron gall ink handwriting on antique linen paper, minor ink bleedthrough from recto side, two clean Latin American 19th century baptism certificates.",
@@ -123,7 +124,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F002V.jpg"
     },
     {
       "series": "bautismo",
@@ -133,7 +135,7 @@
       "folio_number": 3,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F003R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F003R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F003R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 Catholic church register baptism record folio 3 recto, sharp macro photo, historical paper texture, elegant Latin American parish clerk script, complete records.",
@@ -158,7 +160,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F003R.jpg"
     },
     {
       "series": "bautismo",
@@ -168,7 +171,7 @@
       "folio_number": 4,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F004V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F004V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F004V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "19th century ecclesiastical parish baptism tome, folio 4 verso, Venezuela, brown handwriting with natural ink fading along margins, parchment folio texture.",
@@ -193,7 +196,8 @@
             "ministro": "Pbro. Lorenzo Ramos (Teniente de Cura)"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F004V.jpg"
     },
     {
       "series": "bautismo",
@@ -203,7 +207,7 @@
       "folio_number": 5,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F005R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F005R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F005R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Historic archival manuscript, Carupano church 1885, baptism certificate folio 5 recto, crisp calligraphic script, iron gall ink on laid paper, authentic diocesan stamps.",
@@ -228,7 +232,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F005R.jpg"
     },
     {
       "series": "bautismo",
@@ -238,7 +243,7 @@
       "folio_number": 6,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_BAU_T01_F006DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F006DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F006DP.jpg",
       "status": "completed",
       "stress_case": "double_page",
       "prompt": "Double page spread photograph of an antique open leather-bound Catholic ledger from 1886 Carupano, showing both left folio 5 verso and right folio 6 recto in single camera frame, central gutter with book stitching visible, natural book curve and lighting gradient.",
@@ -285,7 +290,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F006DP.jpg"
     },
     {
       "series": "bautismo",
@@ -295,7 +301,7 @@
       "folio_number": 7,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_BAU_T01_F007DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F007DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F007DP.jpg",
       "status": "pending",
       "stress_case": "double_page",
       "prompt": "Archival open book double page spread, 1886 baptism register, high resolution wide shot capturing both pages of volume, dark iron gall ink, multiple handwritten baptismal acts awaiting digitization.",
@@ -312,7 +318,8 @@
           "page_region": "right_page",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F007DP.jpg"
     },
     {
       "series": "bautismo",
@@ -322,7 +329,7 @@
       "folio_number": 8,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F008V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F008V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F008V.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "Antique baptismal manuscript page, 1886 Carupano, folio 8 verso, lower half showing entry ending abruptly with 'continúa en el folio siguiente al recto...', sepia rag paper, vintage calligraphy.",
@@ -350,7 +357,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F008V.jpg"
     },
     {
       "series": "bautismo",
@@ -360,7 +368,7 @@
       "folio_number": 9,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F009R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F009R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F009R.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "Antique baptismal parish register, 1886 Carupano, folio 9 recto, top entry starting with 'Viene del folio anterior vuelto...', listing godparents and formal canonical signatures of priest and sponsors.",
@@ -387,7 +395,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F009R.jpg"
     },
     {
       "series": "bautismo",
@@ -397,7 +406,7 @@
       "folio_number": 10,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F010R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F010R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F010R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Severely faded historical parish register from 1887 Carupano, folio 10 recto, pale brownish iron gall ink with high chemical degradation, faint cursive text requiring high digital contrast enhance, aged parchment stains.",
@@ -407,7 +416,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F010R.jpg"
     },
     {
       "series": "bautismo",
@@ -417,7 +427,7 @@
       "folio_number": 11,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F011V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F011V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F011V.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Historic manuscript book page damaged by water stains and tropical humidity tide marks along edges, folio 11 verso, yellow and damp mottled paper, partially obscured handwriting.",
@@ -427,7 +437,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F011V.jpg"
     },
     {
       "series": "bautismo",
@@ -437,7 +448,7 @@
       "folio_number": 12,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F012R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F012R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F012R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Archival document with severe iron gall ink burn through and paper corrosion, 1887 parish record, acidic ink dissolving through fibers, high difficulty paleographic transcription.",
@@ -447,7 +458,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F012R.jpg"
     },
     {
       "series": "bautismo",
@@ -457,7 +469,7 @@
       "folio_number": 13,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F013V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F013V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F013V.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Historical church document page with torn and mutilated bottom corner, folio 13 verso, ink blot splatters obliterating surname and date fields, ideal for testing unreadable field tagging.",
@@ -467,7 +479,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F013V.jpg"
     },
     {
       "series": "bautismo",
@@ -477,7 +490,7 @@
       "folio_number": 14,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F014R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F014R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F014R.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Mutilated antique parish record with insect holes (bookworm damage) perforating vital names and dates, worm eaten paper lacework over 19th century Spanish handwriting.",
@@ -487,7 +500,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F014R.jpg"
     },
     {
       "series": "bautismo",
@@ -497,11 +511,12 @@
       "folio_number": 15,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F015R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F015R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F015R.jpg",
       "status": "blank",
       "stress_case": "blank",
       "prompt": "Blank historical folio 15 recto from 1888 parish register, unwritten lined sepia paper with only a single formal canonical inspection notice (Auto de Visita Pastoral) written centered, vast empty paper space.",
-      "entries": []
+      "entries": [],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F015R.jpg"
     },
     {
       "series": "bautismo",
@@ -511,7 +526,7 @@
       "folio_number": 16,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F016R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F016R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F016R.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "Parish baptism registry page folio 16 recto with dense 20th century marginal notes written sideways along the left margin in purple ink next to the 1888 original baptism entry, noting subsequent marriage and legitimation.",
@@ -538,7 +553,8 @@
             "notas_marginales": "Contrajo matrimonio con María Teresa Ramos el 14-Nov-1912 (Libro 5 Matr. Folio 82)."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F016R.jpg"
     },
     {
       "series": "bautismo",
@@ -548,7 +564,7 @@
       "folio_number": 17,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F017V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F017V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F017V.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "1888 sacramental manuscript folio 17 verso featuring elaborate episcopal decree marginal note written vertically along left border with official parish stamp seal in faded black ink.",
@@ -575,7 +591,8 @@
             "notas_marginales": "Legitimada por subsiguiente matrimonio de sus padres el 22-Ago-1895."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F017V.jpg"
     },
     {
       "series": "bautismo",
@@ -585,7 +602,7 @@
       "folio_number": 18,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F018R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F018R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F018R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "Historic 1889 baptismal ledger page folio 18 recto, standard crisp calligraphy, two clear unindexed entries for real-time live demo indexing.",
@@ -595,7 +612,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F018R.jpg"
     },
     {
       "series": "bautismo",
@@ -605,7 +623,7 @@
       "folio_number": 19,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_BAU_T01_F019V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F019V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F019V.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1889 ecclesiastical volume folio 19 verso, regular Latin American parish cursive script, waiting for transcription.",
@@ -615,7 +633,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F019V.jpg"
     },
     {
       "series": "bautismo",
@@ -625,7 +644,7 @@
       "folio_number": 20,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_BAU_T01_F020R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/bautismos/CARUPANO_BAU_T01_F020R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F020R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1890 baptismal register final tome page folio 20 recto, historical manuscript on aged parchment with clerical signatures at the bottom.",
@@ -635,7 +654,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_BAU_T01_F020R.jpg"
     },
     {
       "series": "matrimonio",
@@ -645,7 +665,7 @@
       "folio_number": 1,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F001R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F001R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F001R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Historical marriage register folio 1 recto, Carupano church 1885, dark iron gall ink calligraphy, detailed sacramental marriage record of prominent Venezuelan citizens with witnesses and parent details.",
@@ -674,7 +694,8 @@
             "proclamas": "Dispensadas dos proclamas por el Ilustrísimo Señor Obispo de Guayana"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F001R.jpg"
     },
     {
       "series": "matrimonio",
@@ -684,7 +705,7 @@
       "folio_number": 2,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F002V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F002V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F002V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 sacramental marriage tome, folio 2 verso, Carupano Catholic parish, elegant Spanish cursive, complete canonical marriage entry with nuptial benediction.",
@@ -713,7 +734,8 @@
             "proclamas": "Corrieron las tres canónicas proclamas en días festivos inter missarum solemnia"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F002V.jpg"
     },
     {
       "series": "matrimonio",
@@ -723,7 +745,7 @@
       "folio_number": 3,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F003R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F003R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F003R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Antique marriage record document, folio 3 recto, 1885, crisp handwriting on textured antique cotton paper, official church register format.",
@@ -752,7 +774,8 @@
             "proclamas": "Tres proclamas sin impedimento canónico"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F003R.jpg"
     },
     {
       "series": "matrimonio",
@@ -762,7 +785,7 @@
       "folio_number": 4,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F004V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F004V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F004V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 ecclesiastical folio 4 verso marriage act, Venezuela, sepia ink script with flourishing signatures of priest, bridegroom, bride and padrinos.",
@@ -791,7 +814,8 @@
             "proclamas": "Canónicas proclamas leídas en las fiestas de la Asunción y San Bartolomé"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F004V.jpg"
     },
     {
       "series": "matrimonio",
@@ -801,7 +825,7 @@
       "folio_number": 5,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F005R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F005R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F005R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1886 parish marriage tome folio 5 recto, fine quill penmanship on heavy paper, high quality scan appearance.",
@@ -830,7 +854,8 @@
             "proclamas": "Tres proclamas corridas conforme al Santo Concilio de Trento"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F005R.jpg"
     },
     {
       "series": "matrimonio",
@@ -840,7 +865,7 @@
       "folio_number": 6,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_MAT_T01_F006DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F006DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F006DP.jpg",
       "status": "completed",
       "stress_case": "double_page",
       "prompt": "Open book double page spread photograph of 1886 Carupano marriage ledger, left page folio 5 verso and right page folio 6 recto, complete view of massive bound volume with leather spine binding showing in middle.",
@@ -895,7 +920,8 @@
             "proclamas": "Dispensada la tercera proclama por el Vicario Foráneo"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F006DP.jpg"
     },
     {
       "series": "matrimonio",
@@ -905,7 +931,7 @@
       "folio_number": 7,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_MAT_T01_F007DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F007DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F007DP.jpg",
       "status": "pending",
       "stress_case": "double_page",
       "prompt": "Double page archival capture of 1886 marriage records book, folios 6 verso and 7 recto, showing full book curvature, gutter distortion, dual pending marriage entries.",
@@ -922,7 +948,8 @@
           "page_region": "right_page",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F007DP.jpg"
     },
     {
       "series": "matrimonio",
@@ -932,7 +959,7 @@
       "folio_number": 8,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F008V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F008V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F008V.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "Antique marriage registry manuscript folio 8 verso, detailed canonical matrimonial investigation with impediment dispensa that extends to next page, footer note 'pasa al folio siguiente...'",
@@ -964,7 +991,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F008V.jpg"
     },
     {
       "series": "matrimonio",
@@ -974,7 +1002,7 @@
       "folio_number": 9,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F009R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F009R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F009R.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "Matrimonial ledger folio 9 recto, top text 'Continuación del acta matrimonial del folio anterior vuelto...', detailing witnesses, canonical nuptial blessing and official signatures.",
@@ -998,7 +1026,8 @@
             "firmas": "Juan B. Carrión, Francisco Rivera, Juana Montes, Carlos Bermúdez, Luisa Serrano."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F009R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1008,7 +1037,7 @@
       "folio_number": 10,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F010R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F010R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F010R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Severe ink bleaching and fading on 1887 matrimonial registry page folio 10 recto, ghosted cursive script, test case for dynamic contrast thresholding.",
@@ -1018,7 +1047,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F010R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1028,7 +1058,7 @@
       "folio_number": 11,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F011V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F011V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F011V.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Water damaged 19th century marriage book page with pronounced yellow brown tideline stains covering center lines of handwriting.",
@@ -1038,7 +1068,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F011V.jpg"
     },
     {
       "series": "matrimonio",
@@ -1048,7 +1079,7 @@
       "folio_number": 12,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F012R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F012R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F012R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "High chemical oxidation iron gall ink corroded marriage entry, folio 12 recto, dark haloing and paper brittleness.",
@@ -1058,7 +1089,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F012R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1068,7 +1100,7 @@
       "folio_number": 13,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F013V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F013V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F013V.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Historical marriage document folio 13 verso with torn edge cutting through bride parentage names, blot of ink on date field.",
@@ -1078,7 +1110,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F013V.jpg"
     },
     {
       "series": "matrimonio",
@@ -1088,7 +1121,7 @@
       "folio_number": 14,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F014R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F014R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F014R.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Vintage parish record with rodent and insect gnawed paper margins, partially missing textual clauses in marriage act.",
@@ -1098,7 +1131,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F014R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1108,11 +1142,12 @@
       "folio_number": 15,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F015R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F015R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F015R.jpg",
       "status": "blank",
       "stress_case": "blank",
       "prompt": "Clean blank folio 15 recto of marriage book with formal closing certificate for year 1888 signed by bishop secretary, empty lines below.",
-      "entries": []
+      "entries": [],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F015R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1122,7 +1157,7 @@
       "folio_number": 16,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F016R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F016R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F016R.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "1889 marriage register folio 16 recto with dense lateral marginal annotation in red ink detailing subsequent civil registry confirmation.",
@@ -1152,7 +1187,8 @@
             "notas_marginales": "Anotado el registro civil distrital N° 45."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F016R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1162,7 +1198,7 @@
       "folio_number": 17,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F017V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F017V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F017V.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "1889 marriage folio 17 verso featuring apostolic dispensa notation written sideways in left column, signed by apostolic delegate.",
@@ -1192,7 +1228,8 @@
             "notas_marginales": "Dispensa de afinidad en primer grado registrada en secretaría episcopal."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F017V.jpg"
     },
     {
       "series": "matrimonio",
@@ -1202,7 +1239,7 @@
       "folio_number": 18,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F018R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F018R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F018R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1890 wedding book folio 18 recto, standard legible script, unindexed wedding record awaiting entry.",
@@ -1212,7 +1249,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F018R.jpg"
     },
     {
       "series": "matrimonio",
@@ -1222,7 +1260,7 @@
       "folio_number": 19,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_MAT_T01_F019V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F019V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F019V.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1891 marriage register folio 19 verso, typical 19th century ecclesiastical paper, unindexed.",
@@ -1232,7 +1270,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F019V.jpg"
     },
     {
       "series": "matrimonio",
@@ -1242,7 +1281,7 @@
       "folio_number": 20,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_MAT_T01_F020R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/matrimonios/CARUPANO_MAT_T01_F020R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F020R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1895 matrimonial volume final folio 20 recto, parchment texture, complete marriage document ready for indexing.",
@@ -1252,7 +1291,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_MAT_T01_F020R.jpg"
     },
     {
       "series": "defuncion",
@@ -1262,7 +1302,7 @@
       "folio_number": 1,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F001R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F001R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F001R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "Historical burial and death parish book folio 1 recto, Carupano church 1885, sepia ink Latin American handwriting, detailing deceased name, spouse, death cause, received sacraments and cemetery burial location.",
@@ -1285,7 +1325,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F001R.jpg"
     },
     {
       "series": "defuncion",
@@ -1295,7 +1336,7 @@
       "folio_number": 2,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F002V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F002V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F002V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 parish death register folio 2 verso, iron gall ink handwriting on laid paper, clear funeral act record.",
@@ -1318,7 +1359,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F002V.jpg"
     },
     {
       "series": "defuncion",
@@ -1328,7 +1370,7 @@
       "folio_number": 3,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F003R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F003R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F003R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 Catholic church death registry folio 3 recto, crisp script, record of child burial (párvulo) with parent details.",
@@ -1352,7 +1394,8 @@
             "ministro": "Pbro. Lorenzo Ramos"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F003R.jpg"
     },
     {
       "series": "defuncion",
@@ -1362,7 +1405,7 @@
       "folio_number": 4,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F004V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F004V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F004V.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 burial register folio 4 verso, Carupano, dark ink clerical hand, detailing testament and ecclesiastical suffrages.",
@@ -1386,7 +1429,8 @@
             "testamento": "Otorgó testamento ante el Registrador Público Don Ramón Bermúdez"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F004V.jpg"
     },
     {
       "series": "defuncion",
@@ -1396,7 +1440,7 @@
       "folio_number": 5,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F005R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F005R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F005R.jpg",
       "status": "completed",
       "stress_case": "standard",
       "prompt": "1885 death certificate folio 5 recto, antique Spanish document with official cross header and marginal index name.",
@@ -1419,7 +1463,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F005R.jpg"
     },
     {
       "series": "defuncion",
@@ -1429,7 +1474,7 @@
       "folio_number": 6,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_DEF_T01_F006DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F006DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F006DP.jpg",
       "status": "completed",
       "stress_case": "double_page",
       "prompt": "Open book double page spread photograph of 1886 Carupano death ledger, capturing folios 5 verso and 6 recto in one frame, showing aged heavy paper binding.",
@@ -1472,7 +1517,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F006DP.jpg"
     },
     {
       "series": "defuncion",
@@ -1482,7 +1528,7 @@
       "folio_number": 7,
       "folio_side": "double_page",
       "canonical_filename": "CARUPANO_DEF_T01_F007DP.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F007DP.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F007DP.jpg",
       "status": "pending",
       "stress_case": "double_page",
       "prompt": "Double page archival capture of 1886 death record ledger, folios 6 verso and 7 recto, showing gutter margin curvature, awaiting digitizer entry.",
@@ -1499,7 +1545,8 @@
           "page_region": "right_page",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F007DP.jpg"
     },
     {
       "series": "defuncion",
@@ -1509,7 +1556,7 @@
       "folio_number": 8,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F008V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F008V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F008V.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "Historical burial certificate manuscript folio 8 verso, recording elaborate parish funeral and legacy provisions that cut off at bottom: 'continúa la disposición de misas y entierro al folio inmediato recto...'",
@@ -1535,7 +1582,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F008V.jpg"
     },
     {
       "series": "defuncion",
@@ -1545,7 +1593,7 @@
       "folio_number": 9,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F009R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F009R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F009R.jpg",
       "status": "completed",
       "stress_case": "continued",
       "prompt": "1886 ecclesiastical death book folio 9 recto, opening with 'Viene del folio anterior vuelto el entierro de Don Vicente Salazar...', giving details of burial and priest signatures.",
@@ -1568,7 +1616,8 @@
             "ministro": "Pbro. Dr. Juan Bautista Carrión"
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F009R.jpg"
     },
     {
       "series": "defuncion",
@@ -1578,7 +1627,7 @@
       "folio_number": 10,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F010R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F010R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F010R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Extremely faded 1887 death register page folio 10 recto, pale yellow ink on aged paper, difficult reading requiring contrast enhancement.",
@@ -1588,7 +1637,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F010R.jpg"
     },
     {
       "series": "defuncion",
@@ -1598,7 +1648,7 @@
       "folio_number": 11,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F011V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F011V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F011V.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "Water and mold damaged archival death ledger page folio 11 verso with substantial brown damp stains over text lines.",
@@ -1608,7 +1658,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F011V.jpg"
     },
     {
       "series": "defuncion",
@@ -1618,7 +1669,7 @@
       "folio_number": 12,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F012R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F012R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F012R.jpg",
       "status": "pending",
       "stress_case": "degraded",
       "prompt": "High acidity ink erosion on 1887 death document folio 12 recto, ink burn eating into the paper fibers.",
@@ -1628,7 +1679,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F012R.jpg"
     },
     {
       "series": "defuncion",
@@ -1638,7 +1690,7 @@
       "folio_number": 13,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F013V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F013V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F013V.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Damaged death register page folio 13 verso with torn edge and missing death cause clause, blot of black ink across deceased surname.",
@@ -1648,7 +1700,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F013V.jpg"
     },
     {
       "series": "defuncion",
@@ -1658,7 +1711,7 @@
       "folio_number": 14,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F014R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F014R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F014R.jpg",
       "status": "pending",
       "stress_case": "doubtful",
       "prompt": "Pest damaged historic burial record page, bookworm holes piercing through age, cemetery name and dates.",
@@ -1668,7 +1721,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F014R.jpg"
     },
     {
       "series": "defuncion",
@@ -1678,11 +1732,12 @@
       "folio_number": 15,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F015R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F015R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F015R.jpg",
       "status": "blank",
       "stress_case": "blank",
       "prompt": "Blank page folio 15 recto in 1888 burial register with solitary official auto de visita by Diocesan delegate in center, rest completely unwritten blank page.",
-      "entries": []
+      "entries": [],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F015R.jpg"
     },
     {
       "series": "defuncion",
@@ -1692,7 +1747,7 @@
       "folio_number": 16,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F016R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F016R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F016R.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "1888 death certificate folio 16 recto with marginal note in purple indelible pencil indicating exhumation and transfer of mortal remains to family pantheon.",
@@ -1717,7 +1772,8 @@
             "notas_marginales": "Exhumación y traslado a panteón familiar en 1904."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F016R.jpg"
     },
     {
       "series": "defuncion",
@@ -1727,7 +1783,7 @@
       "folio_number": 17,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F017V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F017V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F017V.jpg",
       "status": "completed",
       "stress_case": "marginal_notes",
       "prompt": "1888 death registry folio 17 verso featuring marginal judicial investigation note concerning accidental drowning at Carupano port.",
@@ -1752,7 +1808,8 @@
             "notas_marginales": "Certificación del sumario judicial N° 28 cursada en archivo."
           }
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F017V.jpg"
     },
     {
       "series": "defuncion",
@@ -1762,7 +1819,7 @@
       "folio_number": 18,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F018R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F018R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F018R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1889 burial ledger folio 18 recto, neat Spanish cursive script, pending transcription of death entries.",
@@ -1772,7 +1829,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F018R.jpg"
     },
     {
       "series": "defuncion",
@@ -1782,7 +1840,7 @@
       "folio_number": 19,
       "folio_side": "verso",
       "canonical_filename": "CARUPANO_DEF_T01_F019V.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F019V.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F019V.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1890 Catholic parish death records folio 19 verso, regular parchment paper background, pending status.",
@@ -1792,7 +1850,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F019V.jpg"
     },
     {
       "series": "defuncion",
@@ -1802,7 +1861,7 @@
       "folio_number": 20,
       "folio_side": "recto",
       "canonical_filename": "CARUPANO_DEF_T01_F020R.jpg",
-      "remote_image_url": "https://pub-codexflow.r2.dev/corpus/defunciones/CARUPANO_DEF_T01_F020R.jpg",
+      "remote_image_url": "https://pub-codexflow.r2.dev/4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F020R.jpg",
       "status": "pending",
       "stress_case": "standard",
       "prompt": "1892 death register final tome folio 20 recto, historical manuscript page with closing signatures, pending.",
@@ -1812,7 +1871,8 @@
           "status": "pending",
           "metadata": {}
         }
-      ]
+      ],
+      "r2_url": "4bf4e846-b22d-4105-aacf-3751cc0de60c/CARUPANO_DEF_T01_F020R.jpg"
     }
   ]
 }

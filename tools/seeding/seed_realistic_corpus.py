@@ -380,7 +380,7 @@ class CorpusSeeder:
             filename = f_data.get("canonical_filename")
             status = f_data.get("status")
             stress_case = f_data.get("stress_case", "standard")
-            image_url = f_data.get("remote_image_url")
+            r2_key = f"{self.tenant_id}/{filename}"
 
             # Deterministic UUID para idempotencia total
             folio_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{self.tenant_id}-{filename}"))
@@ -412,7 +412,7 @@ class CorpusSeeder:
                 "canonical_filename": filename,
                 "original_filename": filename,
                 "status": db_status,
-                "r2_url": image_url,
+                "r2_url": r2_key,
                 "metadata": folio_metadata
             }
             folios_to_insert.append(folio_record)

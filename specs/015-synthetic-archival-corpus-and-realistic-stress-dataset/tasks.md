@@ -49,3 +49,12 @@
 - [ ] 4.3 Validar el flujo de exportación de datos:
   - [ ] 4.3.1 Probar exportación DIP y verificación de integridad genealógica.
   - [ ] 4.3.2 Probar exportación a Excel y CSV asegurando que únicamente las partidas completadas se emiten limpiamente sin errores de campos nulos.
+
+## Fase 5: Loop de Mantenimiento M1 — Purga Multi-Tenant en R2, Sincronización JPG y Limpieza de Código
+- [x] M1-01: Purgar los 9 archivos viejos de prueba en `4bf4e846-b22d-4105-aacf-3751cc0de60c/` y eliminar la carpeta huérfana `corpus/` en Cloudflare R2.
+- [x] M1-02: Generar y subir las 60 imágenes paleográficas en formato `.jpg` real (`image/jpeg`) dentro de `4bf4e846-b22d-4105-aacf-3751cc0de60c/{canonical_filename}`.
+- [x] M1-03: Actualizar la columna `r2_url` de los 60 folios en la tabla `folios` de Supabase para que apunten a `4bf4e846-b22d-4105-aacf-3751cc0de60c/{canonical_filename}`.
+- [x] M1-04: Limpiar `backend/main.py` y `frontend/src/app/[subdomain]/visor/page.tsx` eliminando parches de `data:image/`, placeholders oscuros ocultos y la ruta intermedia `route.ts`.
+- [x] M1-05: Auditoría de QA (`sdd_reviewer`) verificando que el bucket R2, la BD Supabase y el código fuente estén 100% limpios y sin código basura.
+
+

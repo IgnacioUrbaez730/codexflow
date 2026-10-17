@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 2000" width="100%" height="100%">
+      
+    <defs>
+      <filter id="paper-texture" x="0%" y="0%" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
+        <feDiffuseLighting in="noise" lighting-color="#f4ebd9" surfaceScale="2" result="light">
+          <feDistantLight azimuth="60" elevation="50" />
+        </feDiffuseLighting>
+        <feBlend mode="multiply" in="SourceGraphic" in2="light" />
+      </filter>
+      <linearGradient id="binding-gradient" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4a3525" stop-opacity="0.8"/>
+        <stop offset="50%" stop-color="#2a1d13" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#4a3525" stop-opacity="0.8"/>
+      </linearGradient>
+    </defs>
+    <rect width="1500" height="2000" fill="#f4ebd9" filter="url(#paper-texture)"/>
+    <g font-family="Georgia, serif" fill="#2c221a">
+      <text x="80" y="70" font-size="28" font-weight="bold" letter-spacing="2">PARROQUIA SANTA ROSA DE CARÚPANO - DIÓCESIS DE GUAYANA</text>
+      <text x="80" y="110" font-size="22" font-style="italic">Libro 1 de Bautismo (1885-1895) — Folio 15 [RECTO] — CARUPANO_BAU_T01_F015R.svg</text>
+      <line x1="80" y1="130" x2="1420" y2="130" stroke="#2c221a" stroke-width="2.5" />
+    </g>
+    <g stroke="#2c221a" stroke-width="2" stroke-linecap="round" fill="none">
+                <text x="750" y="828" font-family="Georgia, serif" font-size="24" font-style="italic" fill="#2c221a" text-anchor="middle">
+                  — Auto de Visita Canónica y Cierre de Año — Sin partidas sacramentales en este folio —
+                </text>
+                </g>
+    <g transform="translate(1260, 1820)" stroke="#4a3b2c" fill="none">
+      <circle cx="70" cy="70" r="60" stroke-width="2.5" stroke-dasharray="6,3"/>
+      <circle cx="70" cy="70" r="48" stroke-width="1"/>
+      <text x="70" y="65" font-family="serif" font-size="12" fill="#4a3b2c" text-anchor="middle" font-weight="bold">PARROQUIA</text>
+      <text x="70" y="80" font-family="serif" font-size="11" fill="#4a3b2c" text-anchor="middle">SANTA ROSA</text>
+      <text x="70" y="93" font-family="serif" font-size="9" fill="#4a3b2c" text-anchor="middle">CARÚPANO</text>
+    </g>
+    
+    </svg>

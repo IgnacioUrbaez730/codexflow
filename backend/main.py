@@ -859,27 +859,20 @@ async def get_next_folio(auth: Dict[str, Any] = Depends(get_auth_context)):
         folio_data["template_id"] = template_id
         folio_data["template"] = template_obj
 
-        r2_val = folio_data.get("r2_url")
-        if r2_val:
-            r2_str = str(r2_val).strip()
-            if r2_str.startswith("data:image/") or r2_str.startswith("http://") or r2_str.startswith("https://"):
-                folio_data["view_url"] = r2_str
-            else:
-                try:
-                    view_url = s3_client.generate_presigned_url(
-                        'get_object',
-                        Params={
-                            'Bucket': os.getenv('R2_BUCKET_NAME'),
-                            'Key': r2_str
-                        },
-                        ExpiresIn=3600
-                    )
-                    folio_data["view_url"] = view_url
-                except Exception as e:
-                    print(f"Error generando view_url: {e}")
-                    active_id = folio_data.get("id")
-                    if active_id:
-                        folio_data["view_url"] = f"/api/v1/folios/{active_id}/image"
+        if folio_data.get("r2_url"):
+            try:
+                view_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': os.getenv('R2_BUCKET_NAME'),
+                        'Key': folio_data["r2_url"]
+                    },
+                    ExpiresIn=3600
+                )
+                folio_data["view_url"] = view_url
+            except Exception as e:
+                print(f"Error generando view_url: {e}")
+                folio_data["view_url"] = None
         else:
             folio_data["view_url"] = None
 
@@ -963,25 +956,20 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
         folio_data["template_id"] = template_id
         folio_data["template"] = template_obj
 
-        r2_val = folio_data.get("r2_url")
-        if r2_val:
-            r2_str = str(r2_val).strip()
-            if r2_str.startswith("data:image/") or r2_str.startswith("http://") or r2_str.startswith("https://"):
-                folio_data["view_url"] = r2_str
-            else:
-                try:
-                    view_url = s3_client.generate_presigned_url(
-                        'get_object',
-                        Params={
-                            'Bucket': os.getenv('R2_BUCKET_NAME'),
-                            'Key': r2_str
-                        },
-                        ExpiresIn=3600
-                    )
-                    folio_data["view_url"] = view_url
-                except Exception as e:
-                    print(f"Error generando view_url: {e}")
-                    folio_data["view_url"] = f"/api/v1/folios/{folio_id}/image"
+        if folio_data.get("r2_url"):
+            try:
+                view_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': os.getenv('R2_BUCKET_NAME'),
+                        'Key': folio_data["r2_url"]
+                    },
+                    ExpiresIn=3600
+                )
+                folio_data["view_url"] = view_url
+            except Exception as e:
+                print(f"Error generando view_url: {e}")
+                folio_data["view_url"] = None
         else:
             folio_data["view_url"] = None
 
@@ -990,60 +978,6 @@ async def get_folio_by_id(folio_id: str, auth: Dict[str, Any] = Depends(get_auth
         if isinstance(e, HTTPException):
             raise e
         print(f"Error in get_folio_by_id: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/v1/folios/{folio_id}/image")
-async def get_folio_image(folio_id: str):
-    """
-    Sirve directamente la imagen del folio desde Cloudflare R2 sin depender de credenciales en el cliente
-    o presigned URLs propensas a expiración/CORS.
-    """
-    try:
-        res = supabase.table("folios").select("id, r2_url, canonical_filename").eq("id", folio_id).execute()
-        if not res.data or len(res.data) == 0:
-            raise HTTPException(status_code=404, detail="Folio no encontrado")
-
-        folio = res.data[0]
-        r2_key = folio.get("r2_url")
-        if not r2_key:
-            raise HTTPException(status_code=404, detail="El folio no tiene r2_url asociada")
-
-        bucket_name = os.getenv("R2_BUCKET_NAME")
-        if not bucket_name:
-            raise HTTPException(status_code=500, detail="R2_BUCKET_NAME no configurado")
-
-        if "/" in r2_key and "://" in r2_key:
-            r2_key = r2_key.split(f"{bucket_name}/")[-1]
-
-        try:
-            s3_obj = s3_client.get_object(Bucket=bucket_name, Key=r2_key)
-        except Exception as s3_err:
-            print(f"Error obteniendo objeto desde R2 ({r2_key}): {s3_err}")
-            raise HTTPException(status_code=404, detail=f"No se pudo cargar la imagen desde el almacenamiento: {str(s3_err)}")
-
-        body = s3_obj["Body"].read()
-        content_type = s3_obj.get("ContentType") or "image/svg+xml"
-        if r2_key.lower().endswith(".svg") or body.startswith(b"<?xml") or body.startswith(b"<svg"):
-            content_type = "image/svg+xml"
-        elif r2_key.lower().endswith(".jpg") or r2_key.lower().endswith(".jpeg"):
-            content_type = "image/jpeg"
-        elif r2_key.lower().endswith(".png"):
-            content_type = "image/png"
-        elif r2_key.lower().endswith(".webp"):
-            content_type = "image/webp"
-
-        return Response(
-            content=body,
-            media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "Access-Control-Allow-Origin": "*",
-            }
-        )
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        print(f"Error in get_folio_image: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
