@@ -2067,13 +2067,51 @@ async def get_records(
 
                 records = []
                 for f in fallback_folios:
-                    meta = f.get("metadata") or {}
-                    first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or "").strip()
-                    last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or "").strip()
-                    principal_person = f"{first_name} {last_name}".strip() or meta.get("nombre_completo") or "Sin titular registrado"
+                    raw_meta = f.get("metadata") or {}
+                    meta = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) and len(raw_meta.get("data")) > 0 else raw_meta
 
-                    event_date = (meta.get("event_date") or meta.get("fecha_acta") or meta.get("fecha_bautismo") or meta.get("fecha") or "").strip()
+                    # Extracción robusta de persona principal
+                    first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or meta.get("difunto_nombres") or "").strip()
+                    last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or meta.get("difunto_apellidos") or "").strip()
+
+                    full_name = f"{first_name} {last_name}".strip()
+                    if not full_name:
+                        full_name = (
+                            meta.get("bautizado") or 
+                            meta.get("nombre_completo") or 
+                            meta.get("nombre_bautizado") or 
+                            meta.get("difunto") or 
+                            meta.get("nombre_difunto") or
+                            ""
+                        )
+                    if not full_name and (meta.get("novio_nombres") or meta.get("novia_nombres") or meta.get("contrayente_1") or meta.get("contrayente_2")):
+                        novio = f"{meta.get('novio_nombres', '')} {meta.get('novio_apellidos', '')}".strip() or meta.get("contrayente_1", "").strip()
+                        novia = f"{meta.get('novia_nombres', '')} {meta.get('novia_apellidos', '')}".strip() or meta.get("contrayente_2", "").strip()
+                        full_name = f"{novio} y {novia}".strip(" y ")
+
+                    principal_person = full_name or "Sin titular registrado"
+
+                    # Extracción de fecha
+                    event_date = (
+                        meta.get("event_date") or 
+                        meta.get("fecha_sacramento") or 
+                        meta.get("fecha_matrimonio") or 
+                        meta.get("fecha_defuncion") or 
+                        meta.get("fecha_entierro") or 
+                        meta.get("fecha_bautismo") or 
+                        meta.get("fecha_acta") or 
+                        meta.get("fecha") or 
+                        ""
+                    ).strip()
                     birth_date = (meta.get("birth_date") or meta.get("fecha_nacimiento") or "").strip()
+                    record_type = (
+                        raw_meta.get("entry_type") or 
+                        meta.get("record_type") or 
+                        meta.get("tipo_acta") or 
+                        "Partida"
+                    ).capitalize()
+
+                    combined_meta = {**raw_meta, **meta} if isinstance(meta, dict) and isinstance(raw_meta, dict) else (meta or raw_meta)
 
                     records.append({
                         "id": f["id"],
@@ -2081,16 +2119,16 @@ async def get_records(
                         "entry_number": 1,
                         "folio_number": f.get("sequence_order") or 1,
                         "folio_side": "recto",
-                        "act_number": meta.get("act_number") or "S/N",
+                        "act_number": meta.get("numero_acta") or meta.get("act_number") or "S/N",
                         "status": f.get("status") or "completed",
                         "is_continued": False,
                         "continued_from_entry_id": None,
-                        "metadata": meta,
+                        "metadata": combined_meta,
                         "principal_person": principal_person,
                         "person_name": principal_person,
                         "event_date": event_date,
                         "birth_date": birth_date,
-                        "record_type": meta.get("record_type") or "Partida",
+                        "record_type": record_type,
                         "canonical_filename": f.get("canonical_filename") or f.get("original_filename"),
                         "file_name": f.get("canonical_filename") or f.get("original_filename"),
                         "created_at": f.get("created_at"),
@@ -2114,14 +2152,49 @@ async def get_records(
 
             records = []
             for entry in raw_entries:
-                meta = entry.get("metadata") or {}
-                first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or "").strip()
-                last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or "").strip()
-                principal_person = f"{first_name} {last_name}".strip() or meta.get("nombre_completo") or "Sin titular registrado"
+                raw_meta = entry.get("metadata") or {}
+                meta = raw_meta.get("data") if isinstance(raw_meta.get("data"), dict) and len(raw_meta.get("data")) > 0 else raw_meta
 
-                event_date = (meta.get("event_date") or meta.get("fecha_acta") or meta.get("fecha_bautismo") or meta.get("fecha") or "").strip()
+                # Extracción robusta de persona principal
+                first_name = (meta.get("first_name") or meta.get("primer_nombre") or meta.get("nombres") or meta.get("nombre") or meta.get("difunto_nombres") or "").strip()
+                last_name = (meta.get("last_name") or meta.get("apellidos") or meta.get("apellido") or meta.get("difunto_apellidos") or "").strip()
+
+                full_name = f"{first_name} {last_name}".strip()
+                if not full_name:
+                    full_name = (
+                        meta.get("bautizado") or 
+                        meta.get("nombre_completo") or 
+                        meta.get("nombre_bautizado") or 
+                        meta.get("difunto") or 
+                        meta.get("nombre_difunto") or
+                        ""
+                    )
+                if not full_name and (meta.get("novio_nombres") or meta.get("novia_nombres") or meta.get("contrayente_1") or meta.get("contrayente_2")):
+                    novio = f"{meta.get('novio_nombres', '')} {meta.get('novio_apellidos', '')}".strip() or meta.get("contrayente_1", "").strip()
+                    novia = f"{meta.get('novia_nombres', '')} {meta.get('novia_apellidos', '')}".strip() or meta.get("contrayente_2", "").strip()
+                    full_name = f"{novio} y {novia}".strip(" y ")
+
+                principal_person = full_name or "Sin titular registrado"
+
+                # Extracción de fecha
+                event_date = (
+                    meta.get("event_date") or 
+                    meta.get("fecha_sacramento") or 
+                    meta.get("fecha_matrimonio") or 
+                    meta.get("fecha_defuncion") or 
+                    meta.get("fecha_entierro") or 
+                    meta.get("fecha_bautismo") or 
+                    meta.get("fecha_acta") or 
+                    meta.get("fecha") or 
+                    ""
+                ).strip()
                 birth_date = (meta.get("birth_date") or meta.get("fecha_nacimiento") or "").strip()
-                record_type = meta.get("record_type") or meta.get("tipo_acta") or "Partida"
+                record_type = (
+                    raw_meta.get("entry_type") or 
+                    meta.get("record_type") or 
+                    meta.get("tipo_acta") or 
+                    "Partida"
+                ).capitalize()
 
                 fid = str(entry.get("folio_id"))
                 f_obj = folio_info_map.get(fid, {})
@@ -2135,17 +2208,19 @@ async def get_records(
                 else:
                     f_num = f_obj.get("sequence_order") or 1
 
+                combined_meta = {**raw_meta, **meta} if isinstance(meta, dict) and isinstance(raw_meta, dict) else (meta or raw_meta)
+
                 records.append({
                     "id": entry.get("id"),
                     "folio_id": fid,
                     "entry_number": entry.get("entry_number", 1),
                     "folio_number": f_num,
                     "folio_side": entry.get("folio_side") or "recto",
-                    "act_number": entry.get("act_number") or "S/N",
+                    "act_number": entry.get("act_number") or meta.get("numero_acta") or meta.get("act_number") or "S/N",
                     "status": entry.get("status") or "completed",
                     "is_continued": bool(entry.get("is_continued", False)),
                     "continued_from_entry_id": entry.get("continued_from_entry_id"),
-                    "metadata": meta,
+                    "metadata": combined_meta,
                     "principal_person": principal_person,
                     "person_name": principal_person,
                     "event_date": event_date,
