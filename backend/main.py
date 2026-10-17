@@ -1677,11 +1677,23 @@ class TemplateUpdateRequest(BaseModel):
     fields: Optional[list] = None
 
 @app.get("/api/v1/templates")
-async def get_templates(auth: Dict[str, Any] = Depends(get_auth_context)):
+async def get_templates(
+    x_tenant_id: Optional[str] = Header(None),
+    auth: Dict[str, Any] = Depends(get_auth_context)
+):
     try:
-        user_client = auth["user_client"]
-        res = user_client.table("templates").select("*").eq("tenant_id", auth["tenant_id"]).execute()
-        return {"status": "success", "data": res.data}
+        user_client = auth.get("user_client") or supabase
+        effective_tenant_id = x_tenant_id or auth.get("tenant_id")
+        
+        # Consultar plantillas del tenant y plantillas del sistema (is_system_template == True)
+        if effective_tenant_id:
+            res = user_client.table("templates").select("*").or_(
+                f"tenant_id.eq.{effective_tenant_id},is_system_template.eq.true"
+            ).order("created_at", desc=False).execute()
+        else:
+            res = user_client.table("templates").select("*").eq("is_system_template", True).order("created_at", desc=False).execute()
+            
+        return {"status": "success", "data": res.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

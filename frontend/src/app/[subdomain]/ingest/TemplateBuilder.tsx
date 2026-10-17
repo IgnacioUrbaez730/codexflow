@@ -27,7 +27,10 @@ export default function TemplateBuilder({ tenantId }: { tenantId: string }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       const res = await fetch("/api/v1/templates", {
-        headers: { "Authorization": `Bearer ${session.access_token}` }
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          ...(tenantId ? { "X-Tenant-ID": tenantId } : {})
+        }
       });
       const resData = await res.json();
       if (resData.status === "success") {
@@ -171,22 +174,67 @@ export default function TemplateBuilder({ tenantId }: { tenantId: string }) {
     }
   };
 
-  const loadMaster = (type: "bautismo" | "defuncion") => {
+  const loadFamilySearchPreset = (type: "bautismo" | "matrimonio" | "defuncion") => {
     if (type === "bautismo") {
       setFields([
-        { id: "nombre_bautizado", label: "Nombre del Bautizado", type: "text", required: true, options: [] },
+        { id: "nombres_bautizado", label: "Nombres del Bautizado", type: "text", required: true, options: [] },
+        { id: "apellidos_bautizado", label: "Apellidos del Bautizado", type: "text", required: true, options: [] },
+        { id: "sexo", label: "Sexo", type: "dropdown", required: false, options: ["Masculino", "Femenino"] },
+        { id: "fecha_bautismo", label: "Fecha de Bautismo", type: "date", required: true, options: [] },
         { id: "fecha_nacimiento", label: "Fecha de Nacimiento", type: "date", required: false, options: [] },
-        { id: "nombre_padre", label: "Nombre del Padre", type: "text", required: true, options: [] },
-        { id: "nombre_madre", label: "Nombre de la Madre", type: "text", required: true, options: [] }
+        { id: "lugar_nacimiento", label: "Lugar de Nacimiento", type: "text", required: false, options: [] },
+        { id: "padre_nombre", label: "Nombre del Padre", type: "text", required: false, options: [] },
+        { id: "madre_nombre", label: "Nombre de la Madre", type: "text", required: false, options: [] },
+        { id: "abuelo_paterno", label: "Abuelo Paterno", type: "text", required: false, options: [] },
+        { id: "abuela_paterna", label: "Abuela Paterna", type: "text", required: false, options: [] },
+        { id: "abuelo_materno", label: "Abuelo Materno", type: "text", required: false, options: [] },
+        { id: "abuela_materna", label: "Abuela Materna", type: "text", required: false, options: [] },
+        { id: "padrino_nombre", label: "Nombre del Padrino", type: "text", required: false, options: [] },
+        { id: "madrina_nombre", label: "Nombre de la Madrina", type: "text", required: false, options: [] },
+        { id: "ministro", label: "Ministro / Sacerdote", type: "text", required: false, options: [] },
+        { id: "notas_marginales", label: "Notas Marginales", type: "long_text", required: false, options: [] }
       ]);
-      setName("Plantilla Bautismo Personalizada");
+      setName("Plantilla Bautismo FamilySearch");
+    } else if (type === "matrimonio") {
+      setFields([
+        { id: "fecha_matrimonio", label: "Fecha de Matrimonio", type: "date", required: true, options: [] },
+        { id: "lugar_matrimonio", label: "Lugar de Matrimonio", type: "text", required: false, options: [] },
+        { id: "novio_nombres", label: "Nombres del Novio", type: "text", required: true, options: [] },
+        { id: "novio_apellidos", label: "Apellidos del Novio", type: "text", required: true, options: [] },
+        { id: "novio_edad", label: "Edad del Novio", type: "text", required: false, options: [] },
+        { id: "novio_estado_civil", label: "Estado Civil Novio", type: "dropdown", required: false, options: ["Soltero", "Viudo", "Divorciado"] },
+        { id: "novio_padre", label: "Padre del Novio", type: "text", required: false, options: [] },
+        { id: "novio_madre", label: "Madre del Novio", type: "text", required: false, options: [] },
+        { id: "novia_nombres", label: "Nombres de la Novia", type: "text", required: true, options: [] },
+        { id: "novia_apellidos", label: "Apellidos de la Novia", type: "text", required: true, options: [] },
+        { id: "novia_edad", label: "Edad de la Novia", type: "text", required: false, options: [] },
+        { id: "novia_estado_civil", label: "Estado Civil Novia", type: "dropdown", required: false, options: ["Soltera", "Viuda", "Divorciada"] },
+        { id: "novia_padre", label: "Padre de la Novia", type: "text", required: false, options: [] },
+        { id: "novia_madre", label: "Madre de la Novia", type: "text", required: false, options: [] },
+        { id: "padrino", label: "Padrino", type: "text", required: false, options: [] },
+        { id: "madrina", label: "Madrina", type: "text", required: false, options: [] },
+        { id: "testigos", label: "Testigos", type: "text", required: false, options: [] },
+        { id: "ministro", label: "Ministro / Sacerdote", type: "text", required: false, options: [] },
+        { id: "notas_marginales", label: "Notas Marginales", type: "long_text", required: false, options: [] }
+      ]);
+      setName("Plantilla Matrimonio FamilySearch");
     } else {
       setFields([
-        { id: "nombre_difunto", label: "Nombre del Difunto", type: "text", required: true, options: [] },
+        { id: "difunto_nombres", label: "Nombres del Difunto", type: "text", required: true, options: [] },
+        { id: "difunto_apellidos", label: "Apellidos del Difunto", type: "text", required: true, options: [] },
+        { id: "sexo", label: "Sexo", type: "dropdown", required: false, options: ["Masculino", "Femenino"] },
         { id: "fecha_defuncion", label: "Fecha de Defunción", type: "date", required: true, options: [] },
-        { id: "causa_muerte", label: "Causa de Muerte", type: "text", required: false, options: [] }
+        { id: "fecha_entierro", label: "Fecha de Entierro", type: "date", required: false, options: [] },
+        { id: "edad_al_fallecer", label: "Edad al Fallecer", type: "text", required: false, options: [] },
+        { id: "estado_civil", label: "Estado Civil", type: "dropdown", required: false, options: ["Soltero(a)", "Casado(a)", "Viudo(a)"] },
+        { id: "conyuge_nombre", label: "Cónyuge / Viudo(a) de", type: "text", required: false, options: [] },
+        { id: "padres_nombre", label: "Padres del Difunto", type: "text", required: false, options: [] },
+        { id: "causa_muerte", label: "Causa de Muerte", type: "text", required: false, options: [] },
+        { id: "cementerio_sepultura", label: "Cementerio o Lugar de Sepultura", type: "text", required: false, options: [] },
+        { id: "ministro", label: "Ministro / Sacerdote", type: "text", required: false, options: [] },
+        { id: "notas_marginales", label: "Notas Marginales", type: "long_text", required: false, options: [] }
       ]);
-      setName("Plantilla Defunción Personalizada");
+      setName("Plantilla Defunción FamilySearch");
     }
     setSelectedTemplateId("");
   };
@@ -226,19 +274,28 @@ export default function TemplateBuilder({ tenantId }: { tenantId: string }) {
             ))}
           </select>
 
-          {/* Quick Preset Buttons */}
-          <div className="flex items-center gap-2">
+          {/* Quick Preset Buttons (Canonical FamilySearch) */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => loadMaster("bautismo")}
-              className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-xs font-medium transition cursor-pointer"
+              type="button"
+              onClick={() => loadFamilySearchPreset("bautismo")}
+              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer shadow-2xs"
             >
-              Bautismo Rápido
+              Bautismo FamilySearch
             </button>
             <button
-              onClick={() => loadMaster("defuncion")}
-              className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1 rounded-md text-xs font-medium transition cursor-pointer"
+              type="button"
+              onClick={() => loadFamilySearchPreset("matrimonio")}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer shadow-2xs"
             >
-              Defunción Rápida
+              Matrimonio FamilySearch
+            </button>
+            <button
+              type="button"
+              onClick={() => loadFamilySearchPreset("defuncion")}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer shadow-2xs"
+            >
+              Defunción FamilySearch
             </button>
           </div>
         </div>

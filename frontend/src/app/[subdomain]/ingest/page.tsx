@@ -428,7 +428,35 @@ export default function IngestHub() {
       }
     };
     const fetchTemplates = async () => {
-      const { data, error } = await supabase.from("templates").select("id, name");
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const res = await fetch("/api/v1/templates", {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
+            },
+          });
+          if (res.ok) {
+            const resData = await res.json();
+            if (resData.status === "success" && Array.isArray(resData.data)) {
+              setTemplates(resData.data);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Fallback to Supabase direct fetch for templates:", e);
+      }
+
+      // Fallback query: tenant templates OR system templates
+      let query = supabase.from("templates").select("id, name, is_system_template");
+      if (tenantId) {
+        query = query.or(`tenant_id.eq.${tenantId},is_system_template.eq.true`);
+      } else {
+        query = query.or("is_system_template.eq.true");
+      }
+      const { data, error } = await query;
       if (error) console.error("Error cargando plantillas:", error);
       if (data && !error) {
         setTemplates(data);
@@ -1198,7 +1226,7 @@ export default function IngestHub() {
                 <option value="">-- Selecciona una plantilla --</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {t.is_system_template ? `🛡️ [Oficial FamilySearch] ${t.name}` : t.name}
                   </option>
                 ))}
               </select>

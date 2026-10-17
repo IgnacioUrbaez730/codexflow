@@ -13,7 +13,7 @@ interface CreateFolderModalProps {
   folderToEdit?: DocumentFolder | null;
   parentFolder?: DocumentFolder | null;
   tree: DocumentFolder[];
-  templates: Array<{ id: string; name: string }>;
+  templates: Array<{ id: string; name: string; is_system_template?: boolean }>;
   tenantId?: string;
 }
 
@@ -418,7 +418,7 @@ export default function CreateFolderModal({
                     <option value="">-- Sin plantilla predeterminada --</option>
                     {templates.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name}
+                        {t.is_system_template ? `🛡️ [Oficial FamilySearch] ${t.name}` : t.name}
                       </option>
                     ))}
                   </select>
