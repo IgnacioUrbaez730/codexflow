@@ -675,7 +675,9 @@ export default function VisorDual() {
       const resData = await res.json();
       if (resData.status === "success" && resData.data) {
         const nextFolio = resData.data;
-        nextFolio.view_url = nextFolio.view_url || nextFolio.r2_url;
+        if (!nextFolio.view_url || (!nextFolio.view_url.startsWith("http://") && !nextFolio.view_url.startsWith("https://") && !nextFolio.view_url.startsWith("data:image/") && !nextFolio.view_url.startsWith("/api/"))) {
+          nextFolio.view_url = `/api/v1/folios/${nextFolio.id}/image`;
+        }
         setFolio(nextFolio);
 
         // Load entries & inherited context for multi-partida
@@ -744,7 +746,9 @@ export default function VisorDual() {
         const resData = await res.json();
         if (res.ok && resData.status === "success" && resData.data) {
           const specFolio = resData.data;
-          specFolio.view_url = specFolio.view_url || specFolio.r2_url;
+          if (!specFolio.view_url || (!specFolio.view_url.startsWith("http://") && !specFolio.view_url.startsWith("https://") && !specFolio.view_url.startsWith("data:image/") && !specFolio.view_url.startsWith("/api/"))) {
+            specFolio.view_url = `/api/v1/folios/${specFolio.id}/image`;
+          }
           setFolio(specFolio);
 
           // Load entries & inherited context for multi-partida
@@ -1483,7 +1487,15 @@ export default function VisorDual() {
           </div>
 
           {(() => {
-            const displayImageUrl = folio?.view_url || folio?.r2_url || folio?.thumbnail_url || "";
+            let displayImageUrl = folio?.view_url || "";
+            if (!displayImageUrl || (!displayImageUrl.startsWith("http://") && !displayImageUrl.startsWith("https://") && !displayImageUrl.startsWith("data:image/") && !displayImageUrl.startsWith("/api/"))) {
+              if (folio?.id) {
+                displayImageUrl = `/api/v1/folios/${folio.id}/image`;
+              } else if (folio?.r2_url) {
+                displayImageUrl = folio.r2_url.startsWith("http") ? folio.r2_url : "";
+              }
+            }
+
             return displayImageUrl ? (
               <>
                 <div
@@ -1510,8 +1522,17 @@ export default function VisorDual() {
                     onError={(e) => {
                       console.warn("Error cargando imagen principal del visor:", displayImageUrl);
                       const target = e.currentTarget;
-                      // Fallback SVG placeholder elegante si falla la URL
-                      const placeholderSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000"><rect width="800" height="1000" fill="%231f2937"/><text x="50%" y="50%" fill="%239ca3af" font-family="sans-serif" font-size="20" text-anchor="middle">No se pudo cargar la imagen del documento</text></svg>`;
+                      const backendFallback = folio?.id ? `/api/v1/folios/${folio.id}/image` : null;
+
+                      // Si falló una URL externa o presignada, intentar endpoint directo del backend
+                      if (backendFallback && !target.src.endsWith(backendFallback)) {
+                        console.info("Reintentando carga directa de imagen a través del backend:", backendFallback);
+                        target.src = backendFallback;
+                        return;
+                      }
+
+                      // Placeholder visible y legible con advertencia clara (fondo claro con borde y texto legible)
+                      const placeholderSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000"><rect width="800" height="1000" fill="%23374151" stroke="%234b5563" stroke-width="4"/><text x="50%" y="46%" fill="%23f3f4f6" font-family="sans-serif" font-weight="bold" font-size="24" text-anchor="middle">Error al cargar imagen del documento</text><text x="50%" y="52%" fill="%239ca3af" font-family="sans-serif" font-size="16" text-anchor="middle">Verifique la conexión o el identificador del folio</text></svg>`;
                       if (target.src !== placeholderSvg) {
                         target.src = placeholderSvg;
                       }
