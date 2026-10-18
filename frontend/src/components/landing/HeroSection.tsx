@@ -56,8 +56,9 @@ export default function HeroSection({ onOpenDemoModal }: HeroSectionProps) {
           {/* Subtítulo institucional persuasivo */}
           <p className="text-lg sm:text-xl text-slate-300 font-normal leading-relaxed mb-10 max-w-3xl mx-auto">
             Acelere la transcripción de libros parroquiales, protocolos notariales y censos antiguos
-            mediante un <strong>Visor Dual con ergonomía extrema</strong> e <strong>IA entrenada con Active Learning</strong>,
-            manteniendo el aislamiento total de datos diocesanos con seguridad RLS.
+            mediante un flujo integral: <strong>Visor Dual de ergonomía extrema</strong>,{' '}
+            <strong>IA con Active Learning</strong>, <strong>Mesa de Evaluación de Calidad</strong> y exportación
+            homologada <strong>FamilySearch DIP &amp; GEDCOM 5.5.1</strong>, con soberanía de datos y seguridad RLS.
           </p>
 
           {/* Botones CTA principales */}
@@ -100,7 +101,10 @@ export default function HeroSection({ onOpenDemoModal }: HeroSectionProps) {
               <span className="w-2 h-2 rounded-full bg-blue-400"></span> 0% Costo de Egress en Cloudflare R2
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Exportación Oficial Excel .xlsx & CSV
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span> Homologación Oficial FamilySearch DIP &amp; GEDCOM 5.5.1
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Mesa de Evaluación &amp; Doble Filtro de Calidad
             </span>
           </div>
         </div>

@@ -10,6 +10,21 @@ interface FAQItem {
 
 const FAQS: FAQItem[] = [
   {
+    question: '¿Cómo funciona la Mesa de Evaluación y el doble filtro de calidad antes de certificar un tomo?',
+    answer:
+      'CodexFlow establece una separación formal de roles entre el Digitador (transcriptor) y el Evaluador (arbitraje de calidad). Cuando las actas son digitadas, ingresan al estado pendiente de revisión. En la Mesa de Evaluación, el evaluador dispone de una consola dual con panel retráctil de cotejo y atajos de alta productividad: aprobación ágil (Ctrl+Enter) o devolución prioritaria con notas de discrepancia (Alt+R). Las actas complejas pueden escalarse al Archivista. Fundamentalmente, cada partida verificada y sellada por el evaluador pasa a constituir el "Gold Standard" institucional, nutriendo el bucle de Active Learning para re-calibrar la IA con datos de máxima pureza.',
+  },
+  {
+    question: '¿En qué consiste la homologación oficial con FamilySearch (DIP y GEDCOM 5.5.1)?',
+    answer:
+      'La plataforma genera paquetes de Información de Difusión (DIP - Dissemination Information Package) en formato .ZIP que cumplen con las directrices internacionales de ingestión archivística y genealógica de FamilySearch. El paquete consolida los facsímiles fotográficos, un manifiesto formal manifest.json, matrices de indexación en Excel (.xlsx) estilizado y CSV con delimitador (;) y BOM UTF-8, y linajes familiares en norma estándar GEDCOM 5.5.1. Con el switch only_verified, la institución garantiza exportar únicamente registros que hayan superado el 100% del arbitraje de calidad.',
+  },
+  {
+    question: '¿Cómo resuelve el sistema la foliación física real Recto / Vuelto y la casuística de actas continuadas?',
+    answer:
+      'A diferencia de las hojas de cálculo planas, CodexFlow replica la anatomía física del libro manuscrito mediante foliación continua con distinción de cara: Recto (ej. F.14r) y Vuelto (ej. F.14v). El sistema soporta múltiples asientos por folio y resuelve con precisión las actas continuadas interfolio (partidas iniciadas al pie de un recto y concluidas en el vuelto siguiente), preservando la continuidad de lectura, vinculando las teselas de imagen correspondientes y heredando la jerarquía territorial eclesiástica.',
+  },
+  {
     question: '¿Qué formatos de imagen y niveles de resolución admite la plataforma?',
     answer:
       'CodexFlow procesa archivos TIFF sin compresión, JPEG de alta densidad, PNG y WebP con resoluciones recomendadas a partir de 300 DPI. El motor genera una pirámide de teselas optimizada que permite inspección con zoom fluido y lupa óptica de 180px sin saturar el ancho de banda del operador.',
@@ -17,7 +32,7 @@ const FAQS: FAQItem[] = [
   {
     question: '¿Cómo se garantiza la confidencialidad, propiedad y aislamiento de los datos diocesanos?',
     answer:
-      'La institución custodia conserva el 100% de la propiedad legal y patrimonial de sus facsímiles y metadatos. La plataforma implementa Row-Level Security (RLS) en PostgreSQL, garantizando aislamiento criptográfico absoluto entre parroquias y curias. Las imágenes se almacenan en buckets privados de Cloudflare R2 sin transferencia a terceros ni re-entrenamiento público no autorizado.',
+      'La institución custodia conserva el 100% de la propiedad legal y patrimonial de sus facsímiles y metadatos. La plataforma implementa Row-Level Security (RLS) en PostgreSQL, garantizando aislamiento criptográfico absoluto entre parroquias y curias. Las imágenes se almacenan en buckets privados de Cloudflare R2 sin coste de egress y sin transferencia a terceros ni re-entrenamiento público no autorizado.',
   },
   {
     question: '¿Qué ocurre si se interrumpe la conexión a internet durante una sesión de transcripción?',
@@ -32,7 +47,7 @@ const FAQS: FAQItem[] = [
   {
     question: '¿En qué formatos se pueden exportar los libros de índices y qué compatibilidad ofrecen?',
     answer:
-      'Se generan con un solo clic libros nativos de Microsoft Excel estilizados (.xlsx) con encabezados oficiales formateados, metadatos de custodia y validación de tipos, así como archivos CSV estructurados delimitados por punto y coma (;). Son plenamente compatibles con hojas de cálculo, sistemas de archivo histórico, bases de datos SQL y software genealógico estándar.',
+      'Se generan con un solo clic libros nativos de Microsoft Excel estilizados (.xlsx) con encabezados oficiales formateados, metadatos de custodia y validación de tipos, archivos CSV estructurados delimitados por punto y coma (;) con codificación UTF-8 con BOM, y árboles genealógicos en norma GEDCOM 5.5.1, plenamente compatibles con cualquier sistema archivístico mundial.',
   },
 ];
 
@@ -55,8 +70,8 @@ export default function FAQSection() {
             Preguntas Frecuentes
           </h2>
           <p className="mt-4 text-base sm:text-lg text-slate-300">
-            Todo lo que administradores patrimoniales, archiveros y digitadores necesitan saber
-            acerca de la infraestructura y operación de CodexFlow.
+            Todo lo que administradores patrimoniales, archiveros, digitadores y evaluadores necesitan saber
+            acerca de la infraestructura, flujo de trabajo y certificaciones de CodexFlow.
           </p>
         </div>
 
