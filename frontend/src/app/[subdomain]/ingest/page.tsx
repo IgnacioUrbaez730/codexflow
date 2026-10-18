@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { useTenant } from "@/context/TenantContext";
 
 import { 
   AlertCircle, 
@@ -25,16 +26,14 @@ import ExportFamilySearchModal from "@/components/folders/ExportFamilySearchModa
 import { DocumentFolder, FolioItem } from "@/components/folders/types";
 
 export default function IngestHub() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-  );
+  const supabase = getSupabaseBrowserClient();
+  const { role: tenantRole, tenantId: contextTenantId } = useTenant();
   const router = useRouter();
   const params = useParams();
   const subdomain = params.subdomain as string;
   const [activeTab, setActiveTab] = useState("folders");
-  const [userRole, setUserRole] = useState<string>("");
-  const [tenantId, setTenantId] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>(tenantRole || "");
+  const [tenantId, setTenantId] = useState<string>(contextTenantId || "");
 
   // States for the UI
   const [templates, setTemplates] = useState<any[]>([]);
@@ -390,83 +389,60 @@ export default function IngestHub() {
     }
   };
 
-  useEffect(() => {
-    // Fetch user role & tenant
-    const fetchUser = async () => {
+  const fetchTemplates = useCallback(async (explicitTenantId?: string) => {
+    const tid = explicitTenantId || tenantId || contextTenantId;
+    try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
+        const res = await fetch("/api/v1/templates", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            ...(tid ? { "X-Tenant-ID": tid } : {}),
+          },
         });
         if (res.ok) {
-          const data = await res.json();
-          setUserRole(data.role);
-        }
-
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("tenant_id")
-          .eq("user_id", session.user.id)
-          .single();
-
-        let resolvedTenantId = profile?.tenant_id;
-        if (!resolvedTenantId && subdomain) {
-          const { data: tenantData } = await supabase
-            .from("tenants")
-            .select("id")
-            .eq("subdomain", subdomain)
-            .single();
-          if (tenantData?.id) {
-            resolvedTenantId = tenantData.id;
+          const resData = await res.json();
+          if (resData.status === "success" && Array.isArray(resData.data)) {
+            setTemplates(resData.data);
+            return;
           }
         }
+      }
+    } catch (e) {
+      console.warn("Fallback to Supabase direct fetch for templates:", e);
+    }
 
-        if (resolvedTenantId) {
-          setTenantId(resolvedTenantId);
-          fetchFoldersTree(resolvedTenantId);
-        }
-      }
-    };
-    const fetchTemplates = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const res = await fetch("/api/v1/templates", {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              ...(tenantId ? { "X-Tenant-ID": tenantId } : {}),
-            },
-          });
-          if (res.ok) {
-            const resData = await res.json();
-            if (resData.status === "success" && Array.isArray(resData.data)) {
-              setTemplates(resData.data);
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Fallback to Supabase direct fetch for templates:", e);
-      }
+    // Fallback query: tenant templates OR system templates
+    let query = supabase.from("templates").select("id, name, is_system_template");
+    if (tid) {
+      query = query.or(`tenant_id.eq.${tid},is_system_template.eq.true`);
+    } else {
+      query = query.or("is_system_template.eq.true");
+    }
+    const { data, error } = await query;
+    if (error) console.error("Error cargando plantillas:", error);
+    if (data && !error) {
+      setTemplates(data);
+    }
+  }, [supabase, tenantId, contextTenantId]);
 
-      // Fallback query: tenant templates OR system templates
-      let query = supabase.from("templates").select("id, name, is_system_template");
-      if (tenantId) {
-        query = query.or(`tenant_id.eq.${tenantId},is_system_template.eq.true`);
-      } else {
-        query = query.or("is_system_template.eq.true");
-      }
-      const { data, error } = await query;
-      if (error) console.error("Error cargando plantillas:", error);
-      if (data && !error) {
-        setTemplates(data);
-      }
-    };
-    fetchUser();
-    fetchTemplates();
-    fetchFoldersTree();
-    fetchDudosos();
-  }, [fetchFoldersTree, supabase]);
+  useEffect(() => {
+    if (tenantRole) setUserRole(tenantRole);
+    if (contextTenantId) setTenantId(contextTenantId);
+  }, [tenantRole, contextTenantId]);
+
+  useEffect(() => {
+    const tid = contextTenantId || tenantId;
+    // T03-F2-03: Carga concurrente con Promise.all sin bloqueos en cascada
+    Promise.all([
+      fetchTemplates(tid || undefined),
+      fetchFoldersTree(tid || undefined),
+      fetchRecentBatches(),
+      fetchDudosos()
+    ]).catch((err) => {
+      console.error("Error cargando recursos de IngestHub:", err);
+    });
+  }, [contextTenantId, fetchTemplates, fetchFoldersTree]);
 
   const escalatedFoliosCount = useMemo(() => {
     return revisionFolios.filter((f) => Boolean(f.metadata?.escalated_to_archivist)).length;

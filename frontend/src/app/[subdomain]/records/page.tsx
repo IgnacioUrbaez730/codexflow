@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { useTenant } from "@/context/TenantContext";
 import {
   Search,
   Download,
@@ -128,21 +129,31 @@ function formatHistoricalDate(dateStr?: string | null): string {
   return trimmed;
 }
 
+const getSavedFilters = (sub: string) => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`codexflow_records_filters_${sub}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function RecordsPage() {
   const { subdomain } = useParams() as { subdomain: string };
   const router = useRouter();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-  );
+  const supabase = getSupabaseBrowserClient();
+  const { role: tenantRole, session: contextSession } = useTenant();
 
-  // Hierarchical & Multi-status Filter States
+  const savedFilters = React.useMemo(() => getSavedFilters(subdomain), [subdomain]);
+
+  // Hierarchical & Multi-status Filter States with retention (T03-F2-04)
   const [batches, setBatches] = useState<BatchOption[]>([]);
-  const [selectedBatch, setSelectedBatch] = useState<string>("");
-  const [selectedSeries, setSelectedSeries] = useState<string>("");
-  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedBatch, setSelectedBatch] = useState<string>(() => savedFilters?.selectedBatch || "");
+  const [selectedSeries, setSelectedSeries] = useState<string>(() => savedFilters?.selectedSeries || "");
+  const [selectedFolderId, setSelectedFolderId] = useState<string>(() => savedFilters?.selectedFolderId || "");
+  const [selectedStatus, setSelectedStatus] = useState<string>(() => savedFilters?.selectedStatus || "all");
   const [counts, setCounts] = useState<StatusCounts>({
     total: 0,
     completed: 0,
@@ -151,11 +162,11 @@ export default function RecordsPage() {
     revision: 0,
     in_progress: 0,
   });
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>(() => savedFilters?.searchTerm || "");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(() => savedFilters?.searchTerm || "");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [page, setPage] = useState<number>(1);
+  const [page, setPage] = useState<number>(() => savedFilters?.page || 1);
   const [pageSize, setPageSize] = useState<number>(20);
 
   // Table & Records States
@@ -168,8 +179,8 @@ export default function RecordsPage() {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
   const [exportingFormat, setExportingFormat] = useState<"xlsx" | "csv" | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(tenantRole || null);
+  const [authToken, setAuthToken] = useState<string | null>(contextSession?.access_token || null);
   const [availableTomes, setAvailableTomes] = useState<DocumentFolder[]>([]);
   const [selectedTomeForExport, setSelectedTomeForExport] = useState<DocumentFolder | null>(null);
   const [isFamilySearchModalOpen, setIsFamilySearchModalOpen] = useState<boolean>(false);
@@ -213,62 +224,77 @@ export default function RecordsPage() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Debounce search
+  // Retención de filtros en sessionStorage para no perder posición al volver de /visor
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(`codexflow_records_filters_${subdomain}`, JSON.stringify({
+          selectedBatch,
+          selectedSeries,
+          selectedFolderId,
+          selectedStatus,
+          searchTerm,
+          page,
+        }));
+      } catch {
+        // Ignorar excepciones de cuota de storage
+      }
+    }
+  }, [selectedBatch, selectedSeries, selectedFolderId, selectedStatus, searchTerm, page, subdomain]);
+
+  // Debounce search sin resetear página si es la carga inicial restaurada
+  const isFirstRender = useRef(true);
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
-      setPage(1);
+      if (!isFirstRender.current) {
+        setPage(1);
+      }
+      isFirstRender.current = false;
     }, 350);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Load initial session, batches & folders tree
+  // Sincronizar rol desde TenantContext
+  useEffect(() => {
+    if (tenantRole) {
+      setUserRole(tenantRole);
+      if (tenantRole === "digitizer") {
+        router.replace(`/${subdomain}/visor`);
+      }
+    }
+  }, [tenantRole, subdomain, router]);
+
+  // Load initial session, batches & folders tree en paralelo con Promise.all (T03-F2-04)
   useEffect(() => {
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      let activeSession = contextSession;
+      if (!activeSession) {
+        const { data: { session } } = await supabase.auth.getSession();
+        activeSession = session;
+      }
+      if (!activeSession) {
         router.replace("/login");
         return;
       }
 
-      setAuthToken(session.access_token);
+      setAuthToken(activeSession.access_token);
 
-      // Check role
       try {
-        const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          const authData = await res.json();
-          setUserRole(authData.role);
-          if (authData.role === "digitizer") {
-            router.replace(`/${subdomain}/visor`);
-            return;
-          }
+        const [batchRes, treeRes] = await Promise.all([
+          supabase
+            .from("batches")
+            .select("id, created_at, templates(name)")
+            .order("created_at", { ascending: false }),
+          fetch("/api/v1/folders/tree", {
+            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+          }),
+        ]);
+
+        if (batchRes.data) {
+          setBatches(batchRes.data as BatchOption[]);
         }
-      } catch (err) {
-        console.error("Error fetching user role:", err);
-      }
 
-      // Fetch batches
-      try {
-        const { data: batchData } = await supabase
-          .from("batches")
-          .select("id, created_at, templates(name)")
-          .order("created_at", { ascending: false });
-
-        if (batchData) {
-          setBatches(batchData as BatchOption[]);
-        }
-      } catch (err) {
-        console.error("Error fetching batches:", err);
-      }
-
-      // Fetch tomes for cascading filter & FamilySearch export
-      try {
-        const treeRes = await fetch("/api/v1/folders/tree", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
         if (treeRes.ok) {
           const treeJson = await treeRes.json();
           const treeData: DocumentFolder[] = treeJson.data || [];
@@ -297,16 +323,16 @@ export default function RecordsPage() {
           traverse(treeData);
           setAvailableTomes(tomes);
           if (tomes.length > 0) {
-            setSelectedTomeForExport(tomes[0]);
+            setSelectedTomeForExport((prev) => prev || tomes[0]);
           }
         }
-      } catch (treeErr) {
-        console.error("Error fetching tomes in records:", treeErr);
+      } catch (err) {
+        console.error("Error cargando batches y tomes en paralelo:", err);
       }
     }
 
     init();
-  }, [subdomain, router]);
+  }, [subdomain, router, contextSession, supabase]);
 
   // Filter tomes dynamically based on selectedSeries
   const filteredTomes = React.useMemo(() => {

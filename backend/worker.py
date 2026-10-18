@@ -2,7 +2,10 @@ import os
 import shutil
 import tempfile
 import boto3
-from pdf2image import convert_from_path
+try:
+    from pdf2image import convert_from_path
+except ImportError:
+    convert_from_path = None
 from supabase import create_client, Client
 
 try:
@@ -48,15 +51,19 @@ def process_file(folio_id: str, file_key: str):
             ext = file_name.split(".")[-1].lower() if "." in file_name else ""
             pages_to_process = []
             if ext == "pdf":
-                try:
-                    pages = convert_from_path(local_path)
-                    for i, page in enumerate(pages):
-                        page_path = os.path.join(temp_dir, f"page_{i}.jpg")
-                        page.save(page_path, "JPEG")
-                        pages_to_process.append(page_path)
-                except Exception as pdf_err:
-                    print(f"Notice converting PDF {file_key}: {pdf_err}")
+                if convert_from_path is None:
+                    print(f"Notice: pdf2image no está instalado. No se puede convertir el PDF {file_key}.")
                     pages_to_process.append(local_path)
+                else:
+                    try:
+                        pages = convert_from_path(local_path)
+                        for i, page in enumerate(pages):
+                            page_path = os.path.join(temp_dir, f"page_{i}.jpg")
+                            page.save(page_path, "JPEG")
+                            pages_to_process.append(page_path)
+                    except Exception as pdf_err:
+                        print(f"Notice converting PDF {file_key}: {pdf_err}")
+                        pages_to_process.append(local_path)
             else:
                 pages_to_process.append(local_path)
 

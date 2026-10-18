@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { useTenant } from "@/context/TenantContext";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -255,10 +256,8 @@ export default function EvaluacionDeskPage() {
   const searchParams = useSearchParams();
   const initialFolioId = searchParams.get("folio_id");
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-  );
+  const supabase = getSupabaseBrowserClient();
+  const { session: tenantSession, role: tenantRole } = useTenant();
 
   // Control Bar States
   const [queueType, setQueueType] = useState<"to_verify" | "doubtful" | "verified" | "all">("to_verify");
@@ -336,18 +335,24 @@ export default function EvaluacionDeskPage() {
     setMagnifier((m) => ({ ...m, active: false, visible: false }));
   }, [folio?.id, setMagnifier]);
 
-  // Fetch folders / tomes
+  // Fetch folders / tomes y queue counts en paralelo (T03-F2-05)
   useEffect(() => {
-    async function loadFolders() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    async function loadInitialData() {
+      const activeSession = tenantSession || (await supabase.auth.getSession()).data.session;
+      if (!activeSession) return;
 
       try {
-        const res = await fetch("/api/v1/folders/tree", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          const json = await res.json();
+        const [treeRes, queueRes] = await Promise.all([
+          fetch("/api/v1/folders/tree", {
+            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+          }),
+          fetch(`/api/v1/evaluation/queue?queue_type=${queueType}&page=1&page_size=20`, {
+            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+          }),
+        ]);
+
+        if (treeRes.ok) {
+          const json = await treeRes.json();
           const treeData: DocumentFolder[] = json.data || [];
           const tomes: DocumentFolder[] = [];
           const traverse = (nodes: DocumentFolder[], inheritedSeries?: string) => {
@@ -372,12 +377,22 @@ export default function EvaluacionDeskPage() {
           traverse(treeData);
           setAvailableTomes(tomes);
         }
+
+        if (queueRes.ok) {
+          const qJson = await queueRes.json();
+          if (qJson.counts) {
+            setCounts(qJson.counts);
+          }
+          setQueueItems(qJson.items || qJson.data || []);
+          setTotalItems(qJson.total || 0);
+          setTotalPages(qJson.total_pages || 1);
+        }
       } catch (err) {
-        console.error("Error loading tomes for evaluation desk:", err);
+        console.error("Error loading initial evaluation data concurrently:", err);
       }
     }
-    loadFolders();
-  }, []);
+    loadInitialData();
+  }, [tenantSession, supabase]);
 
   const filteredTomes = React.useMemo(() => {
     if (!series || series === "unclassified") {

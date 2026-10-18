@@ -2,6 +2,7 @@ import os
 import io
 import re
 import csv
+import time
 import secrets
 import hashlib
 import uuid
@@ -14,7 +15,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, Qu
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from supabase import create_client, Client, ClientOptions
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 try:
     from worker import process_file
 except ImportError:
@@ -233,10 +234,37 @@ class BatchSaveEntriesRequest(BaseModel):
     entries: List[FolioEntryCreate]
     final_status: Optional[str] = None
 
-async def get_auth_context(authorization: str = Header(...), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
+_AUTH_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+AUTH_CACHE_TTL_SECONDS = 300
+
+def invalidate_auth_cache_for_user(user_id: str) -> None:
+    """Elimina de _AUTH_CACHE cualquier entrada asociada a ese user_id."""
+    if not user_id:
+        return
+    keys_to_remove = [k for k, (_, ctx) in list(_AUTH_CACHE.items()) if ctx.get("user_id") == user_id]
+    for k in keys_to_remove:
+        _AUTH_CACHE.pop(k, None)
+
+async def get_auth_context(authorization: Optional[str] = Header(None), x_tenant_id: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
     token = authorization.split(" ")[1] if " " in authorization else authorization
+    
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    
+    if token_hash in _AUTH_CACHE:
+        cached_ts, cached_ctx = _AUTH_CACHE[token_hash]
+        if now - cached_ts < AUTH_CACHE_TTL_SECONDS:
+            if cached_ctx.get("role") == "superadmin":
+                eff_tenant = x_tenant_id or cached_ctx.get("tenant_id")
+                return {
+                    "tenant_id": eff_tenant,
+                    "user_client": cached_ctx["user_client"],
+                    "user_id": cached_ctx["user_id"],
+                    "role": cached_ctx["role"]
+                }
+            return cached_ctx
     
     try:
         res = supabase.auth.get_user(token)
@@ -261,15 +289,19 @@ async def get_auth_context(authorization: str = Header(...), x_tenant_id: Option
             raise HTTPException(status_code=403, detail="Organización desactivada")
         
         if role == "superadmin":
+            base_ctx = {"tenant_id": tenant_id, "user_client": supabase, "user_id": user_id, "role": role}
+            _AUTH_CACHE[token_hash] = (now, base_ctx)
             if x_tenant_id:
-                tenant_id = x_tenant_id
-            return {"tenant_id": tenant_id, "user_client": supabase, "user_id": user_id, "role": role}
+                return {"tenant_id": x_tenant_id, "user_client": supabase, "user_id": user_id, "role": role}
+            return base_ctx
         
         # Create user-scoped client
         options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
         user_client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
         
-        return {"tenant_id": tenant_id, "user_client": user_client, "user_id": user_id, "role": role}
+        auth_ctx = {"tenant_id": tenant_id, "user_client": user_client, "user_id": user_id, "role": role}
+        _AUTH_CACHE[token_hash] = (now, auth_ctx)
+        return auth_ctx
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -1144,6 +1176,23 @@ async def get_team(auth: Dict[str, Any] = Depends(get_auth_context)):
         if isinstance(e, HTTPException): raise e
         print(f"Error in get_team: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
+def _resolve_tenant_redirect_url(tenant_id: Optional[str]) -> str:
+    base_url = (os.getenv("APP_URL") or os.getenv("NEXT_PUBLIC_APP_URL") or "https://codexflow-frontend.vercel.app").rstrip("/")
+    if not tenant_id:
+        return f"{base_url}/welcome"
+    try:
+        t_res = supabase.table("tenants").select("id, name").eq("id", tenant_id).execute()
+        if t_res.data and len(t_res.data) > 0:
+            tenant_record = t_res.data[0]
+            subdomain = tenant_record.get("subdomain") or tenant_record.get("name") or ""
+            subdomain = str(subdomain).strip().lower().replace(" ", "-")
+            if subdomain:
+                return f"{base_url}/{subdomain}/login"
+    except Exception as e:
+        print(f"Notice resolving tenant redirect url for {tenant_id}: {e}")
+    return f"{base_url}/welcome"
+
+
 @app.post("/api/users/invite")
 @app.post("/api/v1/team/invite")
 async def invite_team_member(request: TeamInviteRequest, auth: Dict[str, Any] = Depends(get_auth_context)):
@@ -1151,7 +1200,8 @@ async def invite_team_member(request: TeamInviteRequest, auth: Dict[str, Any] = 
     if request.role not in ["admin", "archivist", "evaluator", "digitizer"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
+        redirect_to = _resolve_tenant_redirect_url(tenant_id)
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": redirect_to})
         user_id = res.user.id
         
         profile_res = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
@@ -1216,6 +1266,7 @@ async def update_team_member(target_user_id: str, request: UpdateTeamMemberReque
         if not res.data:
             raise HTTPException(status_code=404, detail="Usuario no encontrado en esta organización")
             
+        invalidate_auth_cache_for_user(target_user_id)
         return {"status": "success", "message": "User updated successfully"}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
@@ -1450,10 +1501,11 @@ class ResendInviteRequest(BaseModel):
 @app.post("/api/superadmin/tenants/{tenant_id}/resend-invite")
 async def resend_tenant_invite(tenant_id: str, request: ResendInviteRequest, auth: Dict[str, Any] = Depends(get_superadmin_context)):
     try:
-        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
+        redirect_to = _resolve_tenant_redirect_url(tenant_id)
+        res = supabase.auth.admin.invite_user_by_email(request.email, options={"redirect_to": redirect_to})
         return {"status": "success", "message": "Invitación reenviada exitosamente"}
     except Exception as e:
-        print(f"Error in create_tenant: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in resend_tenant_invite: {str(e)}"); raise HTTPException(status_code=500, detail=str(e))
 
 class TenantCreateRequest(BaseModel):
     name: str
@@ -1469,7 +1521,10 @@ async def create_tenant(request: TenantCreateRequest, auth: Dict[str, Any] = Dep
     try:
         # Invite admin user via Supabase Auth Admin API
         # If user exists, this usually just returns the user or re-sends invite
-        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email, options={"redirect_to": "https://codexflow-frontend.vercel.app/welcome"})
+        subdomain_slug = str(request.name).strip().lower().replace(" ", "-")
+        base_url = (os.getenv("APP_URL") or os.getenv("NEXT_PUBLIC_APP_URL") or "https://codexflow-frontend.vercel.app").rstrip("/")
+        redirect_to = f"{base_url}/{subdomain_slug}/login" if subdomain_slug else f"{base_url}/welcome"
+        invite_res = supabase.auth.admin.invite_user_by_email(request.admin_email, options={"redirect_to": redirect_to})
         user_id = invite_res.user.id
         
         # Check if user already belongs to another tenant
@@ -1587,6 +1642,7 @@ async def resolve_orphan(user_id: str, request: ResolveOrphanRequest, auth: Dict
         if not res.data:
             raise HTTPException(status_code=404, detail="User profile not found")
             
+        invalidate_auth_cache_for_user(user_id)
         return {"status": "success", "message": "Orphan resolved", "data": res.data[0]}
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -1639,14 +1695,15 @@ async def auth_me(authorization: str = Header(None)):
         if role == "superadmin":
             return {"role": "superadmin", "redirect_url": "/superadmin"}
             
+        tenant_id = profile.get("tenant_id") if profile_res.data else None
         if role in ["admin", "digitizer", "archivist", "evaluator"] and tenant_name:
             if not has_completed:
-                return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": "/welcome"}
+                return {"role": role, "tenant_name": tenant_name, "tenant_id": tenant_id, "has_completed_onboarding": has_completed, "redirect_url": "/welcome"}
             if role == "evaluator":
-                return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/evaluacion"}
-            return {"role": role, "tenant_name": tenant_name, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/dashboard"}
+                return {"role": role, "tenant_name": tenant_name, "tenant_id": tenant_id, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/evaluacion"}
+            return {"role": role, "tenant_name": tenant_name, "tenant_id": tenant_id, "has_completed_onboarding": has_completed, "redirect_url": f"/{tenant_name}/dashboard"}
             
-        return {"role": role, "redirect_url": "/pending"}
+        return {"role": role, "tenant_id": tenant_id, "redirect_url": "/pending"}
         
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -4357,6 +4414,7 @@ async def save_folio_entries(
         e_meta = dict(entry.metadata) if isinstance(entry.metadata, dict) else {}
         e_meta["digitized_by"] = digitizer_identity
         e_meta["digitized_at"] = now_iso
+        e_meta["created_by"] = user_id
 
         entry_payload = {
             "tenant_id": tenant_id,
@@ -4383,7 +4441,6 @@ async def save_folio_entries(
                 saved_entries.append({"id": e_id, **entry_payload})
         else:
             entry_payload["created_at"] = now_iso
-            entry_payload["created_by"] = user_id
             ins = client.table("folio_entries").insert(entry_payload).execute()
             if ins.data:
                 saved_entries.append(ins.data[0])
@@ -4641,7 +4698,7 @@ async def export_familysearch_package(
     # Obtener el subdominio o nombre de la organización
     tenant_subdomain = ""
     try:
-        tenant_res = supabase.table("tenants").select("subdomain, name").eq("id", tenant_id).execute()
+        tenant_res = supabase.table("tenants").select("name").eq("id", tenant_id).execute()
         if tenant_res.data and len(tenant_res.data) > 0:
             tenant_subdomain = tenant_res.data[0].get("subdomain") or tenant_res.data[0].get("name") or ""
     except Exception as t_err:
@@ -5453,7 +5510,6 @@ async def submit_evaluation_verdict(
                     supabase.table("folio_entries").update(e_payload).eq("id", prev_e["id"]).eq("tenant_id", tenant_id).execute()
                 else:
                     e_payload["created_at"] = now_iso
-                    e_payload["created_by"] = user_id
                     supabase.table("folio_entries").insert(e_payload).execute()
 
         # 3. Aplicar cada tipo de veredicto

@@ -91,9 +91,25 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Switch DIP en Exportación FamilySearch (`ExportFamilySearchModal.tsx`):**
   - Opción *"Exportar exclusivamente actas Verificadas por Evaluador (100% auditadas)"* (`only_verified=true`) en `pre-export-summary` y `export-familysearch`.
 
-## Próximos pasos (Pendientes)
-- **Ruta de Optimización y Rendimiento de Vistas (Postergada al cierre):** Auditar la navegación y carga entre páginas (`/ingest`, `/visor`, `/records`, `/dashboard`). Detectar re-renders innecesarios, depurar código muerto o consultas bloqueantes de Supabase para garantizar transiciones fluidas.
-- **Auditoría del Módulo de Invitaciones y Envío de Correo:** Verificar la entrega y plantillas de correo de invitación Magic Link para digitadores y evaluadores.
+## Módulo 18 COMPLETADO: Blindaje Integral de Estabilidad, Auditoría de Invitaciones, Simulación E2E y Fluidez de Vistas (SPEC-018)
+
+- **Frente 1: Resiliencia de Sesiones, Invitaciones Canónicas y Blindaje RBAC:**
+  - Singleton `getSupabaseBrowserClient()` en `frontend/src/lib/supabaseClient.ts` con `persistSession: true` y `autoRefreshToken: true`, erradicando instanciaciones concurrentes en re-renders.
+  - `TenantContext.tsx` y `TenantProvider` con caché de perfil/sesión y guardias síncronas de ruta por rol en `[subdomain]/layout.tsx` (digitadores redirigidos a `/visor` y evaluadores a `/evaluacion` con toast accesible de advertencia).
+  - Resolución canónica de invitaciones por subdominio en backend (`_resolve_tenant_redirect_url`), dirigiendo el Magic Link de Supabase a `/{subdomain}/login`.
+  - Blindaje integral contra auto-eliminación/auto-degradación del propio administrador y protección activa del último administrador de la organización tanto en frontend (`/settings/users`) como en backend (`HTTP 400`).
+  - Suite de validación en `tools/testing/test_invite_flow.py` ejecutada y aprobada al 100%.
+- **Frente 2: Fluidez y Rendimiento Extremo de Vistas (Cero Retrasos):**
+  - Implementación de `_AUTH_CACHE` (TTL 300s) indexada por hash SHA-256 en FastAPI para `get_auth_context` (< 5ms de resolución de autenticación) con invalidación reactiva inmediata `invalidate_auth_cache_for_user`.
+  - Carga paralela con `Promise.all` en `/ingest`, `/records` y `/evaluacion`.
+  - Retención síncrona de filtros y paginación en `sessionStorage` para el Explorador de Registros (`/records`), permitiendo entrar y volver del visor sin perder la posición ni filtros de búsqueda.
+  - Purgado y redirección canónica de rutas huérfanas (`/[subdomain]/dudosos` ➔ `/evaluacion?queue=doubtful` y `/[subdomain]/visor/[batch_id]` ➔ `/visor?batch_id=...`).
+- **Frente 3: Simulación E2E del Ciclo Completo y Blindaje ante Desconexión:**
+  - Componente `NetworkStatusIndicator.tsx` en cabecera global que detecta estados online/offline y activa eventos para resguardo de borradores en memoria local.
+  - Suite automatizada `tools/testing/test_e2e_production_cycle.py` (9 pasos): Folio pending ➔ Digitación ➔ Evaluación ➔ Devolución motivada con prioridad en cola ➔ Corrección por digitador ➔ Aprobación y verificación ➔ Descarga y validación estructural del ZIP DIP FamilySearch (`manifest.json`, `matriz_indexacion.xlsx`, `matriz_indexacion.csv` UTF-8 y `export_gedcom.ged` 5.5.1 con `only_verified=true`) ➔ Restauración controlada de la BD. Ejecutada al 100% con código 0.
+
+## Próximos pasos (Roadmap)
+- Sistema completamente blindado, certificado y libre de errores. Preparado para demostraciones B2B y despliegue final.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 

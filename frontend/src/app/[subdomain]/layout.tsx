@@ -2,24 +2,43 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname, useParams } from "next/navigation";
-import { createBrowserClient } from '@supabase/ssr';
-import { Menu } from 'lucide-react';
+import { Menu, AlertTriangle } from 'lucide-react';
 import Sidebar from "../../components/Sidebar";
+import NetworkStatusIndicator from "../../components/NetworkStatusIndicator";
 import { SidebarProvider, useSidebar } from "../../context/SidebarContext";
+import { TenantProvider, useTenant } from "../../context/TenantContext";
 
 function SubdomainContent({
   subdomain,
   role,
+  toastMessage,
   children,
 }: {
   subdomain: string;
   role: string | null;
+  toastMessage: string | null;
   children: React.ReactNode;
 }) {
   const { isCollapsed, toggleMobile } = useSidebar();
 
   return (
-    <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50 text-gray-900">
+    <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50 text-gray-900 relative">
+      {/* Network Connectivity Indicator (T04-F3-01) */}
+      <div className="fixed top-3 right-5 z-40 flex items-center gap-2 pointer-events-auto">
+        <NetworkStatusIndicator />
+      </div>
+
+      {/* Toast alert */}
+      {toastMessage && (
+        <div
+          role="alert"
+          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-amber-600 text-white px-4 py-3 rounded-lg shadow-xl text-sm font-medium animate-bounce"
+        >
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-gray-900 text-white z-30 sticky top-0 shadow-md">
         <div className="flex items-center gap-3">
@@ -51,75 +70,57 @@ function SubdomainContent({
   );
 }
 
-export default function SubdomainLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function SubdomainGuard({ children }: { children: React.ReactNode }) {
   const { subdomain } = useParams() as { subdomain: string };
   const router = useRouter();
   const pathname = usePathname();
-  const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<string | null>(null);
+  const { session, role, loading } = useTenant();
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    async function checkAccess() {
-      try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        );
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session?.user) {
-          router.replace("/login");
-          return;
-        }
+    if (loading) return;
 
-        const res = await fetch(`/api/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
-        });
+    if (!session?.user) {
+      router.replace("/login");
+      return;
+    }
 
-        if (res.ok) {
-          const data = await res.json();
-          setRole(data.role);
+    if (!role) {
+      return;
+    }
 
-          // Si es digitizer, permitir únicamente /visor y /metrics
-          if (data.role === "digitizer") {
-            const isAllowed =
-              pathname.startsWith(`/${subdomain}/visor`) ||
-              pathname.startsWith(`/${subdomain}/metrics`);
-            if (!isAllowed) {
-              router.replace(`/${subdomain}/visor`);
-              return;
-            }
-          }
+    // Role-based route guard
+    if (role === "digitizer") {
+      const isRestricted =
+        pathname.startsWith(`/${subdomain}/ingest`) ||
+        pathname.startsWith(`/${subdomain}/evaluacion`) ||
+        pathname.startsWith(`/${subdomain}/settings/users`) ||
+        pathname.startsWith(`/${subdomain}/records`);
 
-          // Si es evaluator, bloquear /ingest y /settings/users y redirigir a /evaluacion
-          if (data.role === "evaluator") {
-            const isRestrictedForEvaluator =
-              pathname.startsWith(`/${subdomain}/ingest`) ||
-              pathname.startsWith(`/${subdomain}/settings/users`);
-            if (isRestrictedForEvaluator) {
-              router.replace(`/${subdomain}/evaluacion`);
-              return;
-            }
-          }
-        } else {
-          await supabase.auth.signOut();
-          router.replace("/login");
-        }
-      } catch (err) {
-        console.error("Auth check failed:", err);
-      } finally {
-        setLoading(false);
+      const isAllowed =
+        pathname.startsWith(`/${subdomain}/visor`) ||
+        pathname.startsWith(`/${subdomain}/metrics`);
+
+      if (isRestricted || !isAllowed) {
+        setToastMessage("Acceso restringido a tu rol");
+        const timer = setTimeout(() => setToastMessage(null), 3500);
+        router.replace(`/${subdomain}/visor`);
+        return () => clearTimeout(timer);
       }
     }
 
-    checkAccess();
-  }, [pathname, subdomain, router]);
+    if (role === "evaluator") {
+      const isRestrictedForEvaluator =
+        pathname.startsWith(`/${subdomain}/ingest`) ||
+        pathname.startsWith(`/${subdomain}/settings/users`);
+      if (isRestrictedForEvaluator) {
+        setToastMessage("Acceso restringido a tu rol");
+        const timer = setTimeout(() => setToastMessage(null), 3500);
+        router.replace(`/${subdomain}/evaluacion`);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [loading, session, role, pathname, subdomain, router]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Verificando accesos...</div>;
@@ -127,9 +128,21 @@ export default function SubdomainLayout({
 
   return (
     <SidebarProvider>
-      <SubdomainContent subdomain={subdomain} role={role}>
+      <SubdomainContent subdomain={subdomain} role={role} toastMessage={toastMessage}>
         {children}
       </SubdomainContent>
     </SidebarProvider>
+  );
+}
+
+export default function SubdomainLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <TenantProvider>
+      <SubdomainGuard>{children}</SubdomainGuard>
+    </TenantProvider>
   );
 }

@@ -1,7 +1,10 @@
 import re
 from collections import Counter
 from typing import List, Dict, Any, Tuple, Optional
-import pytesseract
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
 from PIL import Image
 
 
@@ -163,6 +166,10 @@ def extract_text_and_boxes(image_path: str) -> Tuple[List[Dict[str, Any]], int, 
         return [], width, height
 
     results: List[Dict[str, Any]] = []
+    if pytesseract is None:
+        results = _detect_visual_lines_with_pil(img, width, height)
+        return results, width, height
+
     try:
         data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
         n_boxes = len(data.get("level", []))

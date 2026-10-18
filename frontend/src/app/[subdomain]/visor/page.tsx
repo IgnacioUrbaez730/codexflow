@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { useTenant } from "@/context/TenantContext";
 import {
   Search,
   Eye,
@@ -342,10 +343,8 @@ export default function VisorDual() {
     }
   };
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = getSupabaseBrowserClient();
+  const { session: tenantSession, role: tenantRole } = useTenant();
 
   // Context inheritance detection for fields
   const getInheritedFieldInfo = useCallback(

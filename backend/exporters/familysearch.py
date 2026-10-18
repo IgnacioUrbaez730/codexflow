@@ -784,6 +784,9 @@ def generate_manifest_json(
         "project_name": "CodexFlow - FamilySearch DIP Export",
         "dip_version": "1.0",
         "standard": "FamilySearch DIP Homologation",
+        "export_type": "familysearch_dip_standard",
+        "total_verified_entries": sum(1 for e in entries if (e.get("status") or "").lower() == "verified"),
+        "total_completed_entries": total_completed,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tome_info": {
             "id": folder.get("id"),
