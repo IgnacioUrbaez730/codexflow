@@ -24,9 +24,7 @@ function SubdomainContent({
   return (
     <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50 text-gray-900 relative">
       {/* Network Connectivity Indicator (T04-F3-01) */}
-      <div className="fixed top-3 right-5 z-40 flex items-center gap-2 pointer-events-auto">
-        <NetworkStatusIndicator />
-      </div>
+      <NetworkStatusIndicator />
 
       {/* Toast alert */}
       {toastMessage && (

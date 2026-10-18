@@ -19,6 +19,8 @@ import {
   LayoutGrid,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   ArrowRight,
   UserCheck,
   MapPin,
@@ -265,6 +267,7 @@ export default function EvaluacionDeskPage() {
   const [folderId, setFolderId] = useState<string>("");
   const [viewMode, setViewMode] = useState<"desk" | "list">("desk");
   const [availableTomes, setAvailableTomes] = useState<DocumentFolder[]>([]);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState<boolean>(false);
 
   // Live Counters
   const [counts, setCounts] = useState<EvaluationCounts>({
@@ -982,7 +985,60 @@ export default function EvaluacionDeskPage() {
       )}
 
       {/* 1. Cabecera de Control Superior */}
-      <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0 space-y-3 shadow-2xs">
+      {isHeaderCollapsed ? (
+        <div className="bg-white border-b border-slate-200 px-4 py-1.5 flex items-center justify-between shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <div className="p-1 rounded bg-indigo-600 text-white">
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-xs font-bold text-slate-800">Mesa de Arbitraje</span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
+              {counts.to_verify} por verificar
+            </span>
+            {counts.doubtful > 0 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                {counts.doubtful} dudosos
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Conmutador de modo compacto */}
+            <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("desk")}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold cursor-pointer ${
+                  viewMode === "desk" ? "bg-indigo-600 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                ⚡ Mesa Dual
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold cursor-pointer ${
+                  viewMode === "list" ? "bg-indigo-600 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                📋 Lista
+              </button>
+            </div>
+
+            {/* Botón para expandir el panel completo */}
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(false)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition cursor-pointer"
+              title="Mostrar panel superior y métricas completas"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+              <span>Expandir Panel</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <header className="bg-white border-b border-slate-200 px-5 py-3 shrink-0 space-y-3 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -1059,6 +1115,16 @@ export default function EvaluacionDeskPage() {
                 <span>📋 Lista de Selección por Tomo</span>
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition cursor-pointer"
+              title="Ocultar panel superior para maximizar área de trabajo vertical"
+            >
+              <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Contraer Panel</span>
+            </button>
           </div>
         </div>
 
@@ -1192,6 +1258,7 @@ export default function EvaluacionDeskPage() {
           </button>
         </div>
       </header>
+      )}
 
       {/* 2. Modo Lista de Selección (viewMode === "list") */}
       {viewMode === "list" ? (
