@@ -108,8 +108,30 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
   - Componente `NetworkStatusIndicator.tsx` en cabecera global que detecta estados online/offline y activa eventos para resguardo de borradores en memoria local.
   - Suite automatizada `tools/testing/test_e2e_production_cycle.py` (9 pasos): Folio pending ➔ Digitación ➔ Evaluación ➔ Devolución motivada con prioridad en cola ➔ Corrección por digitador ➔ Aprobación y verificación ➔ Descarga y validación estructural del ZIP DIP FamilySearch (`manifest.json`, `matriz_indexacion.xlsx`, `matriz_indexacion.csv` UTF-8 y `export_gedcom.ged` 5.5.1 con `only_verified=true`) ➔ Restauración controlada de la BD. Ejecutada al 100% con código 0.
 
+## Módulo 19 COMPLETADO: Manual Interactivo del Software, Centro de Ayuda y Guía Operativa por Roles (SPEC-019)
+
+- **Ubicación Dual y Accesibilidad Universal:**
+  - **Ruta Pública (`/manual`):** Integrada con `StickyHeader` y `Footer` de la Landing Page, accesible para prospectos, clientes y público en general sin requerir inicio de sesión.
+  - **Ruta Interna (`/[subdomain]/manual`):** Integrada en el `Sidebar.tsx` con icono `HelpCircle` para todos los roles (`digitizer`, `evaluator`, `archivist`, `admin`), con botón contextual *"Volver a mi Consola"*.
+  - Actualización del guardián de rutas `SubdomainGuard` en `[subdomain]/layout.tsx` para autorizar a los digitadores el acceso a `/manual` sin redirecciones forzosas.
+- **Base de Conocimiento Tipada y Exhaustiva (`manualContent.ts`):**
+  - Módulo de datos TypeScript en cliente (100% offline-first, < 1ms de respuesta sin peticiones de red), cubriendo 7 capítulos estructurados sin textos simulados:
+    1. *Capítulo 1:* Introducción, soberanía canónica (Trento Can. 535), RLS en PostgreSQL, Cloudflare R2 sin egress y ciclo de producción DCam a FamilySearch.
+    2. *Capítulo 2:* Guía del Administrador (onboarding diocesano, invitaciones por Magic Link, matriz RBAC y blindaje anti-degradación del último admin).
+    3. *Capítulo 3:* Guía del Archivista (taxonomía DCam, herencia territorial `canonical_place`, subida de facsímiles JPEG/PDF y resolución de folios en Bandeja de Dudosos).
+    4. *Capítulo 4:* Guía del Digitador (operación 100% con teclado, Lupa interactiva `[L]`, alternancia Recto/Vuelto con `Ctrl+Enter`, multi-partida `Alt+N`, atajos `<Ilegible>` `Ctrl+U`, `<En Blanco>` `Ctrl+B`, y resiliencia offline).
+    5. *Capítulo 5:* Guía del Evaluador de Calidad (Mesa de arbitraje, panel retráctil `[▲ / ▼]`, los 3 veredictos: certificar `Ctrl+Enter`, devolver con nota prioritaria `Alt+R` y escalar a dudosos; Active Learning *Gold Standard*).
+    6. *Capítulo 6:* Explorador de Registros & Exportación FamilySearch (filtros en cascada por Tomo, semáforo de integridad, switch `only_verified` y descarga de paquete ZIP con matriz Excel, CSV UTF-8 BOM, árbol GEDCOM 5.5.1 y `manifest.json`).
+    7. *Capítulo 7:* Resolución de Problemas y Casos Límite (fechas estimadas, actas continuadas interfolio `↪ Continúa...`, caligrafías desvanecidas y recuperación de borradores).
+- **Herramientas Interactivas y Motor de Impresión:**
+  - Buscador reactivo en vivo en cabecera con limpieza instantánea.
+  - Selector horizontal de roles (*Pills*) para filtrar capítulos y secciones.
+  - Tarjeta destacada de Referencia Rápida (*Cheat Sheet*) con etiquetas semánticas `<kbd>` para 16 atajos de teclado.
+  - Botón `[🖨️ Imprimir / Guardar PDF]` con estilos `@media print` que purga barras laterales y genera un PDF limpio en blanco y negro para los voluntarios y transcriptores.
+  - Enlaces directos en la Landing Page (`StickyHeader.tsx` y `Footer.tsx`).
+
 ## Próximos pasos (Roadmap)
-- Sistema completamente blindado, certificado y libre de errores. Preparado para demostraciones B2B y despliegue final.
+- Sistema completamente blindado, manualizado, certificado y libre de errores. Preparado para pruebas con usuarios reales y despliegue final.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 

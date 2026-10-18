@@ -61,6 +61,11 @@ export default function Footer({ onOpenDemoModal }: FooterProps) {
                   Exportación Nativa .xlsx y CSV
                 </a>
               </li>
+              <li>
+                <Link href="/manual" className="hover:text-white transition-colors text-emerald-400 font-medium">
+                  Manual del Software
+                </Link>
+              </li>
             </ul>
           </div>
 

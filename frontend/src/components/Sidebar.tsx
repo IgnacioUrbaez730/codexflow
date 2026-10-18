@@ -10,7 +10,8 @@ import {
   BarChart3, 
   PanelLeftClose, 
   PanelLeftOpen,
-  ShieldCheck
+  ShieldCheck,
+  HelpCircle
 } from 'lucide-react';
 import { useSidebar } from '../context/SidebarContext';
 import SidebarItem from './SidebarItem';
@@ -32,6 +33,7 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
     ? [
         { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
         { href: `/${subdomain}/metrics`, label: 'Mis Métricas', icon: BarChart3 },
+        { href: `/${subdomain}/manual`, label: 'Manual & Ayuda', icon: HelpCircle },
       ]
     : isEvaluator
     ? [
@@ -39,6 +41,7 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
         { href: `/${subdomain}/evaluacion`, label: 'Mesa de Evaluación', icon: ShieldCheck },
         { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
         { href: `/${subdomain}/records`, label: 'Registros', icon: BookOpen },
+        { href: `/${subdomain}/manual`, label: 'Manual & Ayuda', icon: HelpCircle },
       ]
     : [
         { href: `/${subdomain}/dashboard`, label: 'Dashboard', icon: LayoutDashboard },
@@ -47,6 +50,7 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
         { href: `/${subdomain}/visor`, label: 'Visor de Indexación', icon: Scan },
         { href: `/${subdomain}/records`, label: 'Registros', icon: BookOpen },
         { href: `/${subdomain}/settings/users`, label: 'Equipo', icon: Users },
+        { href: `/${subdomain}/manual`, label: 'Manual & Ayuda', icon: HelpCircle },
       ];
 
   return (

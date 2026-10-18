@@ -51,6 +51,7 @@ export default function StickyHeader({ onOpenDemoModal }: StickyHeaderProps) {
     { name: 'Seguridad', href: '#seguridad' },
     { name: 'Casos de Uso', href: '#casos-de-uso' },
     { name: 'Preguntas Frecuentes', href: '#faq' },
+    { name: 'Manual', href: '/manual' },
   ];
 
   return (
@@ -80,15 +81,25 @@ export default function StickyHeader({ onOpenDemoModal }: StickyHeaderProps) {
 
           {/* Navegación Desktop */}
           <nav className="hidden md:flex items-center gap-8" aria-label="Navegación principal">
-            {navLinks.map((link) => (
-              <a
-                key={link.name}
-                href={link.href}
-                className="text-sm font-medium text-slate-300 hover:text-white transition-colors duration-200 focus:outline-none focus:underline"
-              >
-                {link.name}
-              </a>
-            ))}
+            {navLinks.map((link) =>
+              link.href.startsWith('/') ? (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className="text-sm font-medium text-slate-300 hover:text-white transition-colors duration-200 focus:outline-none focus:underline"
+                >
+                  {link.name}
+                </Link>
+              ) : (
+                <a
+                  key={link.name}
+                  href={link.href}
+                  className="text-sm font-medium text-slate-300 hover:text-white transition-colors duration-200 focus:outline-none focus:underline"
+                >
+                  {link.name}
+                </a>
+              )
+            )}
           </nav>
 
           {/* Botones de Acción Desktop */}
@@ -141,16 +152,27 @@ export default function StickyHeader({ onOpenDemoModal }: StickyHeaderProps) {
       {mobileMenuOpen && (
         <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 pt-3 pb-6 shadow-2xl animate-in slide-in-from-top-4 duration-200">
           <nav className="flex flex-col gap-3" aria-label="Navegación móvil">
-            {navLinks.map((link) => (
-              <a
-                key={link.name}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="px-3 py-2 rounded-md text-base font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition-colors"
-              >
-                {link.name}
-              </a>
-            ))}
+            {navLinks.map((link) =>
+              link.href.startsWith('/') ? (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2 rounded-md text-base font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  {link.name}
+                </Link>
+              ) : (
+                <a
+                  key={link.name}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="px-3 py-2 rounded-md text-base font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  {link.name}
+                </a>
+              )
+            )}
             <div className="pt-4 border-t border-slate-800 flex flex-col gap-3">
               {isAuthenticated ? (
                 <Link

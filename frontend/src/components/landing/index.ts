@@ -1,0 +1,9 @@
+export { default as StickyHeader } from './StickyHeader';
+export { default as HeroSection } from './HeroSection';
+export { default as ProblemSolutionSection } from './ProblemSolutionSection';
+export { default as KeyPillarsSection } from './KeyPillarsSection';
+export { default as UseCasesSection } from './UseCasesSection';
+export { default as FAQSection } from './FAQSection';
+export { default as Footer } from './Footer';
+export { default as DemoRequestModal } from './DemoRequestModal';
+export { default as DualViewerMockup } from './DualViewerMockup';

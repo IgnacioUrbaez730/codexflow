@@ -97,7 +97,8 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
 
       const isAllowed =
         pathname.startsWith(`/${subdomain}/visor`) ||
-        pathname.startsWith(`/${subdomain}/metrics`);
+        pathname.startsWith(`/${subdomain}/metrics`) ||
+        pathname.startsWith(`/${subdomain}/manual`);
 
       if (isRestricted || !isAllowed) {
         setToastMessage("Acceso restringido a tu rol");
