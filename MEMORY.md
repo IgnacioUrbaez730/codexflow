@@ -71,10 +71,29 @@ Registro de memoria a corto/medio plazo para los agentes de Antigravity. Máximo
 - **Ordenamiento Archivístico Natural e Insignias:** Por defecto ordena por `Tomo ➔ Folio Físico (F.1r, F.1v...) ➔ N° de Partida`. Muestra insignias de multi-partida (`Partida X de Y`), continuación interfolio (`↪ Continúa de folio anterior`), folios en blanco (`📄 Folio en Blanco / Sin Partidas`) y pendientes (`⏳ Pendiente de transcripción`).
 - **Arbitraje de Calidad en Modal "Detalle":** Carga bajo demanda de la URL firmada de Cloudflare R2 al abrir el detalle y barra de arbitraje conectada a `PATCH /api/v1/records/{id}/status` (`[ ✔ Verificar Acta ]`, `[ ⚠ Enviar a Dudoso ]`, `[ ↩ Devolver a Pendiente ]`).
 
+## Módulo 17 COMPLETADO: Rol de Evaluador de Calidad (`evaluator`) y Mesa de Arbitraje (`/evaluacion`)
+
+- **Rol y Matriz RBAC Dedicada (`evaluator`):**
+  - Registro del rol `evaluator` en base de datos (`user_profiles_role_check`, enum `user_role` y migración `017_evaluator_role_and_arbitration.sql`).
+  - Redirección automática post-login hacia `/[subdomain]/evaluacion` y restricción de navegación: el evaluador solo ve Dashboard, Mesa de Evaluación, Visor y Registros, quedando `/ingest` y `/settings/users` bloqueadas.
+  - Gestión en Equipo (`/settings/users`): capacidad de invitar y asignar el rol de Evaluador de Calidad con badge índigo.
+- **Mesa de Arbitraje de Calidad (`/[subdomain]/evaluacion`):**
+  - **Doble Modo Operativo:** Conmutador entre `⚡ Mesa Dual (Cola Continua)` y `📋 Lista de Selección por Tomo` con filtros por Serie y Tomo.
+  - **4 Contadores Interactivos en Vivo:** *Por Verificar (Completados)*, *Dudosos / Ilegibles*, *Escalados al Archivista* y *Verificados Hoy / Total*.
+  - **Mesa Dual Ergonómica:** Panel izquierdo con visor paleográfico de alta resolución (Zoom, Pan, Rotar 90°, Lupa `[L]` con `MagnifierLens` y `FilterControlsPopover`), y panel derecho con tarjeta de trazabilidad (*Digitado por*, *Tomo*, *Localidad*), selector multi-partida con botón rápido `✔ Verificar Todas las Partidas`, formulario editable en línea con sinónimos automáticos (desglose bidireccional de abuelos, padrinos y fechas) y registro de correcciones en `training_data` como *Gold Standard (Active Learning)*.
+  - **Los 3 Veredictos de Calidad y Atajos:**
+    1. `✔ Aprobar y Verificar (Ctrl+Enter)`: Sella `status = 'verified'`, `verified_by` y `verified_at`.
+    2. `↩ Devolver al Digitador (Alt+R)`: Exige nota obligatoria (`review_notes`), devuelve a `pending` con prioridad alta (`priority_returned = true`) y muestra banner ámbar de corrección en `/visor`.
+    3. `⚠ Escalar al Archivista / Dudoso`: Asigna `status = 'revision'`, activa `escalated_to_archivist = true` y detona alertas visuales en la Bandeja de Dudosos de Ingesta y Registros.
+- **Alertas de Escalamiento al Archivista:**
+  - En `/ingest` (pestaña *Dudosos*): Banner superior de notificación para el Archivista/Admin indicando cuántos folios escaló el Evaluador, ordenando los folios escalados en primer lugar con el badge `🔔 Escalado al Archivista`.
+  - En `/records`: Insignia visual `🔔 Escalado al Archivista` en la columna de estado.
+- **Switch DIP en Exportación FamilySearch (`ExportFamilySearchModal.tsx`):**
+  - Opción *"Exportar exclusivamente actas Verificadas por Evaluador (100% auditadas)"* (`only_verified=true`) en `pre-export-summary` y `export-familysearch`.
+
 ## Próximos pasos (Pendientes)
-- **Ruta de Optimización y Rendimiento de Vistas:** Auditar la navegación y carga entre páginas (`/ingest`, `/visor`, `/records`, `/dashboard`). Detectar re-renders innecesarios, depurar código muerto o consultas bloqueantes de Supabase para garantizar transiciones fluidas.
-- **SPEC-017: Rol dedicado de Evaluador (`evaluator`) y Mesa de Arbitraje (`/evaluacion`).**
-- **Auditoría del Módulo de Invitaciones:** Verificar envío de correos Magic Link para digitizers y evaluadores sin desvíos de URL.
+- **Ruta de Optimización y Rendimiento de Vistas (Postergada al cierre):** Auditar la navegación y carga entre páginas (`/ingest`, `/visor`, `/records`, `/dashboard`). Detectar re-renders innecesarios, depurar código muerto o consultas bloqueantes de Supabase para garantizar transiciones fluidas.
+- **Auditoría del Módulo de Invitaciones y Envío de Correo:** Verificar la entrega y plantillas de correo de invitación Magic Link para digitadores y evaluadores.
 
 ## Registro de Mantenimiento y Bugs Críticos (Spec 005)
 
