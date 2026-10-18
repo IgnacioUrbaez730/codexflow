@@ -126,6 +126,128 @@ function inferFolderSeries(folder: DocumentFolder, parentSeries?: string): strin
   return metaSeries || "";
 }
 
+/**
+ * Resuelve el valor canónico de un campo mediante sinónimos bidireccionales
+ * para compatibilidad entre plantillas y datos transcritos (ej. singular <-> plural).
+ */
+export function resolveFieldValue(key: string, data: Record<string, any>): string {
+  if (!data) return "";
+  const val = data[key];
+  if (val !== undefined && val !== null && String(val).trim() !== "") {
+    return String(val);
+  }
+
+  switch (key) {
+    case "abuelo_paterno": {
+      if (data.abuelos_paternos) {
+        const parts = String(data.abuelos_paternos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts[0]?.trim() || String(data.abuelos_paternos).trim();
+      }
+      return "";
+    }
+    case "abuela_paterna": {
+      if (data.abuelos_paternos) {
+        const parts = String(data.abuelos_paternos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts.length >= 2 ? parts.slice(1).join(" y ").trim() : "";
+      }
+      return "";
+    }
+    case "abuelos_paternos": {
+      return [data.abuelo_paterno, data.abuela_paterna].filter(Boolean).join(" y ");
+    }
+    case "abuelo_materno": {
+      if (data.abuelos_maternos) {
+        const parts = String(data.abuelos_maternos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts[0]?.trim() || String(data.abuelos_maternos).trim();
+      }
+      return "";
+    }
+    case "abuela_materna": {
+      if (data.abuelos_maternos) {
+        const parts = String(data.abuelos_maternos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts.length >= 2 ? parts.slice(1).join(" y ").trim() : "";
+      }
+      return "";
+    }
+    case "abuelos_maternos": {
+      return [data.abuelo_materno, data.abuela_materna].filter(Boolean).join(" y ");
+    }
+    case "padrino": {
+      if (data.padrinos) {
+        const parts = String(data.padrinos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts[0]?.trim() || String(data.padrinos).trim();
+      }
+      return "";
+    }
+    case "madrina": {
+      if (data.padrinos) {
+        const parts = String(data.padrinos).split(/\s+y\s+|\s+e\s+|,\s*/i);
+        return parts.length >= 2 ? parts.slice(1).join(" y ").trim() : "";
+      }
+      return "";
+    }
+    case "padrinos": {
+      return [data.padrino, data.madrina].filter(Boolean).join(" y ");
+    }
+    case "nombre_padre":
+      return data.padre ? String(data.padre) : "";
+    case "padre":
+      return data.nombre_padre ? String(data.nombre_padre) : "";
+    case "nombre_madre":
+      return data.madre ? String(data.madre) : "";
+    case "madre":
+      return data.nombre_madre ? String(data.nombre_madre) : "";
+    case "nombres":
+      return (
+        data.bautizado ||
+        data.difunto ||
+        data.novio_nombres ||
+        data.persona_principal ||
+        data.nombre ||
+        ""
+      );
+    case "apellidos":
+      return data.apellido || "";
+    case "bautizado":
+    case "difunto": {
+      const full = [data.nombres, data.apellidos].filter(Boolean).join(" ").trim();
+      return (
+        full ||
+        data.bautizado ||
+        data.difunto ||
+        data.novio_nombres ||
+        data.persona_principal ||
+        data.nombre ||
+        ""
+      );
+    }
+    case "novio_nombres":
+      return data.nombres || data.bautizado || data.persona_principal || "";
+    case "fecha_sacramento":
+      return (
+        data.fecha_bautismo ||
+        data.fecha_matrimonio ||
+        data.fecha_defuncion ||
+        data.fecha_acta ||
+        ""
+      );
+    case "fecha_bautismo":
+    case "fecha_matrimonio":
+    case "fecha_defuncion":
+      return data.fecha_sacramento || data.fecha_acta || "";
+    case "fecha_acta":
+      return (
+        data.fecha_sacramento ||
+        data.fecha_bautismo ||
+        data.fecha_matrimonio ||
+        data.fecha_defuncion ||
+        ""
+      );
+    default:
+      return "";
+  }
+}
+
 export default function EvaluacionDeskPage() {
   const params = useParams() as { subdomain: string };
   const subdomain = params.subdomain;
@@ -275,6 +397,94 @@ export default function EvaluacionDeskPage() {
       if (v !== null && typeof v === "object") continue;
       clean[k] = v ?? "";
     }
+
+    // Normalización y sinónimos canónicos bidireccionales
+
+    // 1. Abuelos paternos: abuelos_paternos <-> abuelo_paterno / abuela_paterna
+    if (clean.abuelos_paternos && String(clean.abuelos_paternos).trim() !== "") {
+      const pStr = String(clean.abuelos_paternos).trim();
+      if (!clean.abuelo_paterno && !clean.abuela_paterna) {
+        const parts = pStr.split(/\s+y\s+|\s+e\s+|,\s*/i);
+        clean.abuelo_paterno = parts[0]?.trim() || pStr;
+        if (parts.length >= 2) {
+          clean.abuela_paterna = parts.slice(1).join(" y ").trim();
+        }
+      }
+    } else if (clean.abuelo_paterno || clean.abuela_paterna) {
+      const combined = [clean.abuelo_paterno, clean.abuela_paterna].filter(Boolean).join(" y ");
+      if (combined && !clean.abuelos_paternos) clean.abuelos_paternos = combined;
+    }
+
+    // 2. Abuelos maternos: abuelos_maternos <-> abuelo_materno / abuela_materna
+    if (clean.abuelos_maternos && String(clean.abuelos_maternos).trim() !== "") {
+      const mStr = String(clean.abuelos_maternos).trim();
+      if (!clean.abuelo_materno && !clean.abuela_materna) {
+        const parts = mStr.split(/\s+y\s+|\s+e\s+|,\s*/i);
+        clean.abuelo_materno = parts[0]?.trim() || mStr;
+        if (parts.length >= 2) {
+          clean.abuela_materna = parts.slice(1).join(" y ").trim();
+        }
+      }
+    } else if (clean.abuelo_materno || clean.abuela_materna) {
+      const combined = [clean.abuelo_materno, clean.abuela_materna].filter(Boolean).join(" y ");
+      if (combined && !clean.abuelos_maternos) clean.abuelos_maternos = combined;
+    }
+
+    // 3. Padrinos: padrinos <-> padrino / madrina
+    if (clean.padrinos && String(clean.padrinos).trim() !== "") {
+      const padStr = String(clean.padrinos).trim();
+      if (!clean.padrino && !clean.madrina) {
+        const parts = padStr.split(/\s+y\s+|\s+e\s+|,\s*/i);
+        clean.padrino = parts[0]?.trim() || padStr;
+        if (parts.length >= 2) {
+          clean.madrina = parts.slice(1).join(" y ").trim();
+        }
+      }
+    } else if (clean.padrino || clean.madrina) {
+      const combined = [clean.padrino, clean.madrina].filter(Boolean).join(" y ");
+      if (combined && !clean.padrinos) clean.padrinos = combined;
+    }
+
+    // 4. Padres: nombre_padre <-> padre, nombre_madre <-> madre
+    if (clean.padre && !clean.nombre_padre) clean.nombre_padre = clean.padre;
+    if (clean.nombre_padre && !clean.padre) clean.padre = clean.nombre_padre;
+    if (clean.madre && !clean.nombre_madre) clean.nombre_madre = clean.madre;
+    if (clean.nombre_madre && !clean.madre) clean.madre = clean.nombre_madre;
+
+    // 5. Sujetos: nombres + apellidos <-> bautizado / difunto / novio_nombres
+    const personaPrincipal =
+      clean.bautizado ||
+      clean.difunto ||
+      clean.novio_nombres ||
+      clean.persona_principal ||
+      "";
+    if (personaPrincipal && !clean.nombres && !clean.apellidos) {
+      clean.nombres = personaPrincipal;
+    }
+    if (clean.nombres || clean.apellidos) {
+      const full = [clean.nombres, clean.apellidos].filter(Boolean).join(" ").trim();
+      if (full) {
+        if (!clean.bautizado) clean.bautizado = full;
+        if (!clean.difunto) clean.difunto = full;
+      }
+    }
+
+    // 6. Fechas: fecha_sacramento <-> fecha_bautismo, fecha_matrimonio, fecha_defuncion, fecha_acta
+    const fechaEvento =
+      clean.fecha_sacramento ||
+      clean.fecha_bautismo ||
+      clean.fecha_matrimonio ||
+      clean.fecha_defuncion ||
+      clean.fecha_acta ||
+      "";
+    if (fechaEvento) {
+      if (!clean.fecha_sacramento) clean.fecha_sacramento = fechaEvento;
+      if (!clean.fecha_bautismo) clean.fecha_bautismo = fechaEvento;
+      if (!clean.fecha_matrimonio) clean.fecha_matrimonio = fechaEvento;
+      if (!clean.fecha_defuncion) clean.fecha_defuncion = fechaEvento;
+      if (!clean.fecha_acta) clean.fecha_acta = fechaEvento;
+    }
+
     return clean;
   }, []);
 
@@ -448,7 +658,12 @@ export default function EvaluacionDeskPage() {
   // Handle field edit
   const handleFieldChange = (fieldKey: string, val: string) => {
     setFormData((prev) => ({ ...prev, [fieldKey]: val }));
-    const origVal = String(originalEntriesMap[activeEntryNum]?.[fieldKey] ?? "").trim();
+    const origRaw = originalEntriesMap[activeEntryNum]?.[fieldKey];
+    const origResolved =
+      origRaw !== undefined && origRaw !== ""
+        ? origRaw
+        : resolveFieldValue(fieldKey, originalEntriesMap[activeEntryNum] || {});
+    const origVal = String(origResolved ?? "").trim();
     const newVal = String(val ?? "").trim();
 
     setModifiedFieldsByEntry((prev) => {
@@ -683,19 +898,46 @@ export default function EvaluacionDeskPage() {
   // Resolve editable fields list from template or entry metadata
   const editableFields = React.useMemo(() => {
     const tplFields = folio?.template?.fields;
+    const result: Array<{ key: string; label: string; type: string; required: boolean }> = [];
+    const seenKeys = new Set<string>();
+
     if (Array.isArray(tplFields) && tplFields.length > 0) {
-      return tplFields.map((f: any) => ({
-        key: f.id || f.key || f.name || "",
-        label: f.label || f.name || f.id || "",
-        type: f.type || "text",
-        required: Boolean(f.required),
-      }));
+      for (const f of tplFields) {
+        const k = f.id || f.key || f.name || "";
+        if (!k) continue;
+        seenKeys.add(k);
+        result.push({
+          key: k,
+          label: f.label || f.name || f.id || k,
+          type: f.type || (k.includes("fecha") ? "date" : "text"),
+          required: Boolean(f.required),
+        });
+      }
+
+      // Si en formData existen claves adicionales con texto no vacío que no están en la plantilla
+      // (por ejemplo: abuelos_paternos, abuelos_maternos, padrinos, bautizado, notas_marginales),
+      // ¡Añadirlas a la lista para que ningún dato transcrito quede oculto ni se pierda!
+      for (const [k, v] of Object.entries(formData)) {
+        if (SYSTEM_META_KEYS.has(k) || seenKeys.has(k)) continue;
+        if (v !== null && v !== undefined && String(v).trim() !== "") {
+          seenKeys.add(k);
+          result.push({
+            key: k,
+            label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            type: k.includes("fecha") ? "date" : "text",
+            required: false,
+          });
+        }
+      }
+
+      return result;
     }
+
     const keys = Object.keys(formData).filter((k) => !SYSTEM_META_KEYS.has(k));
     return keys.map((k) => ({
       key: k,
       label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      type: "text",
+      type: k.includes("fecha") ? "date" : "text",
       required: false,
     }));
   }, [folio?.template?.fields, formData]);
@@ -1476,7 +1718,11 @@ export default function EvaluacionDeskPage() {
                     ) : (
                       editableFields.map((field) => {
                         const isCorrected = activeModifiedSet.has(field.key);
-                        const val = formData[field.key] ?? "";
+                        const val = isCorrected
+                          ? (formData[field.key] ?? "")
+                          : (formData[field.key] !== undefined && formData[field.key] !== ""
+                              ? formData[field.key]
+                              : resolveFieldValue(field.key, formData));
                         return (
                           <div key={field.key} className="space-y-1">
                             <div className="flex items-center justify-between text-xs">

@@ -1,0 +1,25 @@
+[
+  {
+    "id": "4cdfe6c4-d1bd-5a64-a5b9-f8bbef38e53f",
+    "metadata": {
+      "data": {
+        "sexo": "M",
+        "nombres": "Jos\u00e9 Francisco",
+        "ministro": "Pbro. Dr. Juan Bautista Carri\u00f3n",
+        "padrinos": "Dr. Andr\u00e9s Salazar y Josefa Montes",
+        "apellidos": "Alcal\u00e1 G\u00f3mez",
+        "bautizado": "Jos\u00e9 Francisco Alcal\u00e1 G\u00f3mez",
+        "nombre_madre": "Mar\u00eda Antonia G\u00f3mez",
+        "nombre_padre": "Manuel Vicente Alcal\u00e1",
+        "abuelos_maternos": "Jos\u00e9 Mar\u00eda G\u00f3mez y Rosa Ramos",
+        "abuelos_paternos": "Francisco de Paula Alcal\u00e1 y Carmen Berm\u00fadez",
+        "fecha_nacimiento": "1885-01-02",
+        "fecha_sacramento": "1885-01-14",
+        "lugar_nacimiento": "Parroquia Santa Rosa de Lima de Car\u00fapano"
+      },
+      "entry_type": "bautismo",
+      "has_marginal_notes": false,
+      "marginal_notes_text": null
+    }
+  }
+]
