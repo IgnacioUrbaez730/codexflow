@@ -209,3 +209,11 @@ Todo nuevo código y planificación debe apegarse a estas reglas a partir de aho
 24. **Eliminación Total de Datos Simulados y Active Learning Real (Spec 009, Loop 2):**
     - **Cero Mock Data:** Se purgaron todos los valores simulados en `AIDashboardMetrics.tsx` (126, 14, 2, 88.5%) y en `GET /api/v1/ai/metrics`. Los contadores reflejan 0 hasta que existan calibraciones reales.
     - **Persistencia Dual en R2:** Guardado garantizado de feedback y discrepancias humanas en Cloudflare R2 (`_system/training_data/{tenant_id}.json`) además de Supabase en cada guardado de folio (`/api/v1/folios/save`), alimentando métricas y aprendizaje 100% reales.
+
+25. **Pase Maestro de Auditoría e Impersonación de Superadmin (Spec 020 COMPLETADA):**
+    - **Resolución Universal de Tenant:** `get_auth_context` en FastAPI resuelve dinámicamente `effective_tenant_id` para superadmin vía header `x-tenant-id`, `x-subdomain` o referer URL, otorgando acceso con bypass RLS seguro mediante service client.
+    - **Partición de Caché:** `_AUTH_CACHE` particionada por tupla `(token_hash, effective_tenant_id)` con TTL de 60s, eliminando colisiones al alternar entre diócesis.
+    - **Protección Anti-Spoofing:** Encabezados ignorados estrictamente para roles regulares (`admin`, `archivist`, `evaluator`, `digitizer`), preservando su `tenant_id` inmutable.
+    - **UI de Auditoría:** Barra adhesiva superior `SuperadminImpersonationBanner.tsx` con dropdown para saltar de organización preservando la subruta activa y botón para volver a `/superadmin`.
+    - **Badge en Sidebar:** Reflejo visual `"Rol: Superadmin (Auditando: {subdomain})"`.
+
