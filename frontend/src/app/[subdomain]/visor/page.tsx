@@ -596,6 +596,7 @@ export default function VisorDual() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${sessionData.session?.access_token}`,
+            "x-subdomain": subdomain,
           },
         });
         if (res.ok) {
@@ -615,6 +616,7 @@ export default function VisorDual() {
     showAIOverlay,
     aiPredictions.length,
     folio?.id,
+    subdomain,
     supabase,
     template,
     applyPredictionsToEmptyFields,
@@ -639,6 +641,7 @@ export default function VisorDual() {
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${sessionData.session?.access_token}`,
+                  "x-subdomain": subdomain,
                 },
               });
               if (aiRes.ok) {
@@ -669,6 +672,7 @@ export default function VisorDual() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${data.session?.access_token}`,
+          "x-subdomain": subdomain,
         },
       });
       const resData = await res.json();
@@ -725,7 +729,7 @@ export default function VisorDual() {
       isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [supabase, fetchTemplate, initializeFormWithAI, loadFolioEntriesAndContext]);
+  }, [subdomain, supabase, fetchTemplate, initializeFormWithAI, loadFolioEntriesAndContext]);
 
   const fetchSpecificFolio = useCallback(
     async (id: string) => {
@@ -737,6 +741,7 @@ export default function VisorDual() {
         const res = await fetch(`/api/v1/folios/${id}`, {
           headers: {
             Authorization: `Bearer ${sessionData.session?.access_token}`,
+            "x-subdomain": subdomain,
           },
         });
         const resData = await res.json();
@@ -1164,6 +1169,7 @@ export default function VisorDual() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
+          "x-subdomain": subdomain,
         },
         body: JSON.stringify({
           entries: updatedEntries,
@@ -1187,6 +1193,7 @@ export default function VisorDual() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session?.access_token}`,
+            "x-subdomain": subdomain,
           },
           body: JSON.stringify({
             folio_id: folio.id,
@@ -1248,6 +1255,7 @@ export default function VisorDual() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token}`,
+          "x-subdomain": subdomain,
         },
         body: JSON.stringify({
           entries: updatedEntries,

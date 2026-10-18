@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname, useParams } from "next/navigation";
 import { Menu, AlertTriangle } from 'lucide-react';
 import Sidebar from "../../components/Sidebar";
+import SuperadminImpersonationBanner from "../../components/superadmin/SuperadminImpersonationBanner";
 import NetworkStatusIndicator from "../../components/NetworkStatusIndicator";
 import { SidebarProvider, useSidebar } from "../../context/SidebarContext";
 import { TenantProvider, useTenant } from "../../context/TenantContext";
@@ -11,18 +12,26 @@ import { TenantProvider, useTenant } from "../../context/TenantContext";
 function SubdomainContent({
   subdomain,
   role,
+  isSuperadmin,
   toastMessage,
   children,
 }: {
   subdomain: string;
   role: string | null;
+  isSuperadmin?: boolean;
   toastMessage: string | null;
   children: React.ReactNode;
 }) {
   const { isCollapsed, toggleMobile } = useSidebar();
+  const showBanner = role === "superadmin" || isSuperadmin;
 
   return (
     <div className="subdomain-layout flex flex-col min-h-screen bg-gray-50 text-gray-900 relative">
+      {/* Superadmin Impersonation Banner (T03-UI-01 / T03-UI-02 / T03-UI-03) */}
+      {showBanner && (
+        <SuperadminImpersonationBanner currentSubdomain={subdomain} />
+      )}
+
       {/* Network Connectivity Indicator (T04-F3-01) */}
       <NetworkStatusIndicator />
 
@@ -51,7 +60,11 @@ function SubdomainContent({
           <span className="font-bold tracking-tight text-base">CodexFlow</span>
         </div>
         <span className="text-xs text-gray-400 capitalize bg-gray-800 px-2 py-1 rounded">
-          {role === "evaluator" ? "Evaluador de Calidad" : role}
+          {role === "evaluator"
+            ? "Evaluador de Calidad"
+            : role === "superadmin" || isSuperadmin
+            ? "Superadmin (Auditoría)"
+            : role}
         </span>
       </div>
 
@@ -72,7 +85,7 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
   const { subdomain } = useParams() as { subdomain: string };
   const router = useRouter();
   const pathname = usePathname();
-  const { session, role, loading } = useTenant();
+  const { session, role, isSuperadmin, tenantError, loading } = useTenant();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,7 +96,28 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Manejo de organización inexistente o inactiva (404/403)
+    if (tenantError) {
+      setToastMessage(tenantError || "La organización solicitada no existe o está inactiva");
+      if (role === "superadmin" || isSuperadmin) {
+        const timer = setTimeout(() => {
+          router.replace("/superadmin");
+        }, 1500);
+        return () => clearTimeout(timer);
+      } else {
+        const timer = setTimeout(() => {
+          router.replace("/login");
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+
     if (!role) {
+      return;
+    }
+
+    // Acceso libre e irrestricto a todas las rutas para superadmin (T02-FE-03)
+    if (role === "superadmin" || isSuperadmin) {
       return;
     }
 
@@ -119,7 +153,7 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(timer);
       }
     }
-  }, [loading, session, role, pathname, subdomain, router]);
+  }, [loading, session, role, isSuperadmin, tenantError, pathname, subdomain, router]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Verificando accesos...</div>;
@@ -127,7 +161,12 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <SubdomainContent subdomain={subdomain} role={role} toastMessage={toastMessage}>
+      <SubdomainContent
+        subdomain={subdomain}
+        role={role}
+        isSuperadmin={isSuperadmin}
+        toastMessage={toastMessage}
+      >
         {children}
       </SubdomainContent>
     </SidebarProvider>

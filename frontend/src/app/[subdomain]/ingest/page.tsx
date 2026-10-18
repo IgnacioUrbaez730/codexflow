@@ -128,7 +128,10 @@ export default function IngestHub() {
       setUserToken(token);
 
       const tid = explicitTenantId || tenantId;
-      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        "x-subdomain": subdomain,
+      };
       if (tid) {
         headers["X-Tenant-ID"] = tid;
       }
@@ -188,7 +191,7 @@ export default function IngestHub() {
     } finally {
       setLoadingFolders(false);
     }
-  }, [supabase, tenantId]);
+  }, [supabase, tenantId, subdomain]);
 
   const fetchFolderFolios = useCallback(async (folderId: string) => {
     setLoadingFolderFolios(true);
@@ -234,6 +237,7 @@ export default function IngestHub() {
         try {
           const headers: Record<string, string> = {
             Authorization: `Bearer ${token}`,
+            "x-subdomain": subdomain,
           };
           if (tenantId) {
             headers["X-Tenant-ID"] = tenantId;
@@ -315,7 +319,10 @@ export default function IngestHub() {
       if (token) {
         try {
           const res = await fetch("/api/v1/batches", {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "x-subdomain": subdomain,
+            },
           });
           if (res.ok) {
             const data = await res.json();
@@ -354,7 +361,10 @@ export default function IngestHub() {
       if (token) {
         try {
           const res = await fetch("/api/v1/folios/revision", {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "x-subdomain": subdomain,
+            },
           });
           if (res.ok) {
             const data = await res.json();
@@ -397,6 +407,7 @@ export default function IngestHub() {
         const res = await fetch("/api/v1/templates", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
+            "x-subdomain": subdomain,
             ...(tid ? { "X-Tenant-ID": tid } : {}),
           },
         });
@@ -505,6 +516,7 @@ export default function IngestHub() {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "x-subdomain": subdomain,
       };
       if (tenantId) {
         headers["X-Tenant-ID"] = tenantId;
@@ -549,6 +561,7 @@ export default function IngestHub() {
 
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
+        "x-subdomain": subdomain,
       };
       if (tenantId) {
         headers["X-Tenant-ID"] = tenantId;

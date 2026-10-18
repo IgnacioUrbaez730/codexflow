@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { 
   LayoutDashboard, 
   UploadCloud, 
@@ -136,12 +137,36 @@ export default function Sidebar({ subdomain, role }: SidebarProps) {
         {/* Footer info & Logout */}
         <div className="mt-auto pt-3 border-t border-gray-800 flex flex-col gap-3">
           {!isCollapsed && (
-            <div className="px-2 text-xs text-gray-400 flex items-center justify-between">
-              <span>Rol:</span>
-              <span className="font-semibold text-gray-300 capitalize">
-                {role === 'evaluator' ? 'Evaluador de Calidad' : role}
-              </span>
-            </div>
+            <>
+              {role === 'superadmin' ? (
+                <div className="px-2 flex flex-col gap-1.5">
+                  <div className="bg-indigo-950 border border-indigo-700/60 text-indigo-200 px-2.5 py-1.5 rounded text-[11px] font-medium leading-tight shadow-2xs">
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-400">
+                      Modo Auditoría
+                    </div>
+                    <div className="font-semibold text-white truncate mt-0.5">
+                      Rol: Superadmin
+                    </div>
+                    <div className="text-[10px] text-indigo-300 truncate">
+                      Auditando: <span className="font-semibold text-white">{subdomain}</span>
+                    </div>
+                  </div>
+                  <Link
+                    href="/superadmin"
+                    className="text-[11px] text-indigo-400 hover:text-indigo-200 flex items-center gap-1 font-semibold transition-colors px-1 py-0.5"
+                  >
+                    <span>← Panel Global</span>
+                  </Link>
+                </div>
+              ) : (
+                <div className="px-2 text-xs text-gray-400 flex items-center justify-between">
+                  <span>Rol:</span>
+                  <span className="font-semibold text-gray-300 capitalize">
+                    {role === 'evaluator' ? 'Evaluador de Calidad' : role}
+                  </span>
+                </div>
+              )}
+            </>
           )}
           <div className={isCollapsed ? 'flex justify-center' : 'w-full'}>
             <LogoutButton isCollapsed={isCollapsed} className={isCollapsed ? '' : 'w-full'} />

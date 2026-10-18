@@ -27,7 +27,9 @@ export default function DashboardPage() {
         );
         const { data: { session } } = await supabase.auth.getSession();
         
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = {
+          'x-subdomain': params.subdomain,
+        };
         if (session?.access_token) {
           headers['Authorization'] = `Bearer ${session.access_token}`;
           setSessionToken(session.access_token);

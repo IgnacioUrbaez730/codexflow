@@ -287,7 +287,10 @@ export default function RecordsPage() {
             .select("id, created_at, templates(name)")
             .order("created_at", { ascending: false }),
           fetch("/api/v1/folders/tree", {
-            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+            headers: {
+              Authorization: `Bearer ${activeSession.access_token}`,
+              "x-subdomain": subdomain,
+            },
           }),
         ]);
 
@@ -370,6 +373,7 @@ export default function RecordsPage() {
       const res = await fetch(`/api/v1/records?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
       });
 
@@ -464,6 +468,7 @@ export default function RecordsPage() {
       const res = await fetch(`/api/v1/records/export?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
       });
 
@@ -511,6 +516,7 @@ export default function RecordsPage() {
             const res = await fetch(`/api/v1/folios/${targetFolioId}`, {
               headers: {
                 Authorization: `Bearer ${token}`,
+                "x-subdomain": subdomain,
               },
             });
             if (res.ok) {
@@ -562,6 +568,7 @@ export default function RecordsPage() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
         body: JSON.stringify({
           status: newStatus,
@@ -611,6 +618,7 @@ export default function RecordsPage() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
       });
       const resData = await res.json();
@@ -724,6 +732,7 @@ export default function RecordsPage() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
         body: JSON.stringify({
           metadata: formData,
@@ -773,6 +782,7 @@ export default function RecordsPage() {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
         },
       });
 

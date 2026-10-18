@@ -11,6 +11,8 @@ interface TenantContextType {
   role: string | null;
   tenantId: string | null;
   subdomain: string;
+  isSuperadmin: boolean;
+  tenantError: string | null;
   loading: boolean;
   refreshAuth: () => Promise<void>;
 }
@@ -31,10 +33,13 @@ export function TenantProvider({
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [isSuperadmin, setIsSuperadmin] = useState<boolean>(false);
+  const [tenantError, setTenantError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchAuth = useCallback(async (currentSession?: Session | null) => {
     try {
+      setTenantError(null);
       const supabase = getSupabaseBrowserClient();
       let activeSession = currentSession;
       if (activeSession === undefined) {
@@ -47,6 +52,8 @@ export function TenantProvider({
         setUser(null);
         setRole(null);
         setTenantId(null);
+        setIsSuperadmin(false);
+        setTenantError(null);
         setLoading(false);
         return;
       }
@@ -54,26 +61,54 @@ export function TenantProvider({
       setSession(activeSession);
       setUser(activeSession.user);
 
-      const res = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${activeSession.access_token}`,
-        },
-      });
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${activeSession.access_token}`,
+      };
+      if (subdomain) {
+        headers["x-subdomain"] = subdomain;
+      }
+
+      const res = await fetch("/api/auth/me", { headers });
 
       if (res.ok) {
         const data = await res.json();
-        setRole(data.role || null);
+        const resolvedRole = data.role || null;
+        const resolvedSuperadmin = resolvedRole === "superadmin" || data.is_superadmin === true;
+        setRole(resolvedRole);
         setTenantId(data.tenant_id || data.tenantId || null);
+        setIsSuperadmin(resolvedSuperadmin);
+        setTenantError(null);
       } else {
-        setRole(null);
-        setTenantId(null);
+        const errJson = await res.json().catch(() => ({}));
+        if (res.status === 404 || res.status === 403) {
+          const detailMsg = errJson.detail || "La organización solicitada no existe o está inactiva";
+          setTenantError(detailMsg);
+          // Check if caller is superadmin to allow SubdomainGuard redirect to /superadmin
+          try {
+            const fallbackRes = await fetch("/api/auth/me", {
+              headers: { Authorization: `Bearer ${activeSession.access_token}` },
+            });
+            if (fallbackRes.ok) {
+              const fbData = await fallbackRes.json();
+              if (fbData.role === "superadmin" || fbData.is_superadmin === true) {
+                setRole("superadmin");
+                setIsSuperadmin(true);
+              }
+            }
+          } catch {}
+        } else {
+          setRole(null);
+          setTenantId(null);
+          setIsSuperadmin(false);
+          setTenantError(null);
+        }
       }
     } catch (err) {
       console.error("Error in TenantContext fetchAuth:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [subdomain]);
 
   useEffect(() => {
     let isMounted = true;
@@ -119,6 +154,8 @@ export function TenantProvider({
         role,
         tenantId,
         subdomain,
+        isSuperadmin,
+        tenantError,
         loading,
         refreshAuth,
       }}

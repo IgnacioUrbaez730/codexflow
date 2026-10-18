@@ -347,10 +347,16 @@ export default function EvaluacionDeskPage() {
       try {
         const [treeRes, queueRes] = await Promise.all([
           fetch("/api/v1/folders/tree", {
-            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+            headers: {
+              Authorization: `Bearer ${activeSession.access_token}`,
+              "x-subdomain": subdomain,
+            },
           }),
           fetch(`/api/v1/evaluation/queue?queue_type=${queueType}&page=1&page_size=20`, {
-            headers: { Authorization: `Bearer ${activeSession.access_token}` },
+            headers: {
+              Authorization: `Bearer ${activeSession.access_token}`,
+              "x-subdomain": subdomain,
+            },
           }),
         ]);
 
@@ -521,7 +527,10 @@ export default function EvaluacionDeskPage() {
       qParams.set("page_size", "20");
 
       const res = await fetch(`/api/v1/evaluation/queue?${qParams.toString()}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "x-subdomain": subdomain,
+        },
       });
       if (res.ok) {
         const json = await res.json();
@@ -537,7 +546,7 @@ export default function EvaluacionDeskPage() {
     } finally {
       setLoadingQueue(false);
     }
-  }, [queueType, series, folderId, page]);
+  }, [queueType, series, folderId, page, subdomain]);
 
   // Load next folio in Desk mode (or specific folio)
   const loadNextFolio = useCallback(
@@ -559,6 +568,7 @@ export default function EvaluacionDeskPage() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
+            "x-subdomain": subdomain,
           },
           body: JSON.stringify(payload),
         });
@@ -761,6 +771,7 @@ export default function EvaluacionDeskPage() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
+            "x-subdomain": subdomain,
           },
           body: JSON.stringify(bodyPayload),
         });
